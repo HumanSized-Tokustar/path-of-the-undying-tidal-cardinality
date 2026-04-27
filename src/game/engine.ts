@@ -35,6 +35,8 @@ const COLOR = {
   token: "#7be0ff",
   crystal: "#d97bff",
 };
+const COLOR_PLAYER_HI = "#7ce896";   // tunic highlight
+const COLOR_PLAYER_LO = "#2a7a3a";   // tunic mid-shadow
 
 type EnemyType =
   | "shooter" | "shooterElite"
@@ -224,6 +226,12 @@ export class Game {
   private warning: string | null = null;
   private warnTimer = 0;
   private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
+  private spawnTier = 0;        // grows by 1 per 111m for the tide system
+  private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
+  private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
+  private tideMsgTimer = 0;     // overlay timer for the tide banner
+  private tideMsgText = "";
+  private grabCharge = 0;       // seconds F is held to charge a throw (0..1.5)
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
