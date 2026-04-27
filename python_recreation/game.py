@@ -716,6 +716,7 @@ class Game:
                     for p in self.platforms:
                         v = PLATFORM_VARIANTS[p["kind"]]
                         if v["spikes"]: continue
+                        if p["kind"] == "ladder": continue
                         if e["x"]+e["w"]/2 > p["x"] and e["x"]-e["w"]/2 < p["x"]+p["w"]:
                             top = p["y"]
                             prev_bot = e["y"]+e["h"] - e["vy"]*edt
