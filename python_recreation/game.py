@@ -188,7 +188,8 @@ class Game:
         self.misc_ammo = 10 * pm  # 5 per slot × 2 slots
         self.kills = 0; self.boss_kills = 0
         self.time_alive = 0
-        self.spawn_timer = 1.5
+        self.spawn_timer = 3.5
+        self.enemies_spawned = 0
         self.weather = "clear"; self.weather_switch = 8.0
         self.cycle_time = 0
         self.pace_mult = 1.0
