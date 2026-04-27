@@ -213,6 +213,25 @@ export class Game {
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
+  // === Animation
+  private animTime = 0;
+  private meleeSwing = 0; // 0..1 visual swing
+  // === Weather
+  private weather: "clear" | "rain" | "snow" | "storm" = "clear";
+  private weatherSwitch = 8;
+  private rainDrops: { x:number; y:number; vy:number }[] = [];
+  private lightningFlash = 0;
+  private nextLightning = 6;
+  // === Power-ups (active timers, 5s each)
+  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puForesight = 0;
+  // === World pickups on ground (coins/tokens/crystals/powerups) — different list separate from drops
+  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_for"; value:number }[] = [];
+  private worldPickupNextX = 600;
+  // === Landmarks (safezones)
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private inSafeZone = false;
+  // Overdrive previous max HP cache
+  private odPrevMaxHp = 123;
 
   private last = 0; private rafId = 0;
 
@@ -311,6 +330,11 @@ export class Game {
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
+    this.animTime = 0; this.meleeSwing = 0;
+    this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
+    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puForesight = 0;
+    this.worldPickups = []; this.worldPickupNextX = 600;
+    this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.inventory = {
       owned: [...STARTING_OWNED],
       loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
@@ -411,7 +435,11 @@ export class Game {
     // Movement
     let speed = 5 * PX_PER_METER * this.paceMult;
     if (this.rolling) speed *= 1.6;
-    if (this.odActive) speed *= 1.15;
+    if (this.odActive) speed *= 1.25;
+    if (this.puSpeed > 0) speed *= 2;
+    if (this.weather === "rain") speed *= 0.92;
+    if (this.weather === "storm") speed *= 0.85;
+    this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     // Friction from current platform (ice = slippery)
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -477,23 +505,39 @@ export class Game {
 
     if (this.input.overdrivePressed && this.odBar >= 1 && !this.odActive) {
       this.odActive = true; this.odTime = 6; this.odBar = 0;
-      this.flashDescription("OVERDRIVE — 2× damage, +15% speed");
+      // Double offensive stats AND double max HP + heal proportionally
+      this.odPrevMaxHp = this.pMaxHp;
+      this.pMaxHp = this.odPrevMaxHp * 2;
+      this.pHp = Math.min(this.pMaxHp, this.pHp + this.odPrevMaxHp);
+      this.flashDescription("OVERDRIVE — 2× DMG, 2× MAX HP, +SPEED (6s)");
     }
-    if (this.odActive) { this.odTime -= dt; if (this.odTime <= 0) this.odActive = false; }
+    if (this.odActive) {
+      this.odTime -= dt;
+      if (this.odTime <= 0) {
+        this.odActive = false;
+        this.pMaxHp = this.odPrevMaxHp;
+        this.pHp = Math.min(this.pHp, this.pMaxHp);
+      }
+    }
 
     if (this.fireCdR > 0) this.fireCdR -= dt;
     if (this.fireCdM > 0) this.fireCdM -= dt;
     if (this.fireCdMisc > 0) this.fireCdMisc -= dt;
     if (this.pInv > 0) this.pInv -= dt;
     if (this.descTimer > 0) this.descTimer -= dt;
+    if (this.meleeSwing > 0) this.meleeSwing = Math.max(0, this.meleeSwing - dt * 4);
+    if (this.puDamage > 0) this.puDamage -= dt;
+    if (this.puSpeed > 0) this.puSpeed -= dt;
+    if (this.puInvincible > 0) { this.puInvincible -= dt; this.pInv = Math.max(this.pInv, 0.1); }
+    if (this.puForesight > 0) this.puForesight -= dt;
 
-    // Fire active weapon (J)
+    // J = fire ACTIVE ranged weapon only (knife in slot still acts melee)
     if (this.input.fireR && this.fireCdR <= 0) {
       const w = WEAPONS[this.inventory.loadout[this.inventory.active]];
+      const dmgMult = (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       if (w.kind === "ranged" && this.ammo >= w.ammoPerShot) {
         this.fireCdR = w.fireCd;
         this.ammo -= w.ammoPerShot;
-        const dmgMult = this.odActive ? 2 : 1;
         for (let p = 0; p < w.pellets; p++) {
           const ang = (Math.random() - 0.5) * w.spread;
           const cs = Math.cos(ang), sn = Math.sin(ang);
@@ -507,20 +551,21 @@ export class Game {
         audio.play("fire");
         this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
       } else if (w.kind === "melee") {
-        // L-equivalent if knife is active
         this.fireCdR = w.fireCd;
-        const dmg = w.dmg * (this.odActive ? 2 : 1);
+        this.meleeSwing = 1;
+        const dmg = w.dmg * dmgMult;
         this.enemies.forEach(e => {
           if (Math.sign(e.x - this.px) === this.pFacing &&
-              Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
+              Math.abs(e.x - this.px) < 70 && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
         });
         audio.play("fire");
       }
     }
-    // Always-melee L
+    // Always-melee L (knife) — animated
     if (this.input.meleePressed && this.fireCdM <= 0) {
       this.fireCdM = WEAPONS.knife.fireCd;
-      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1);
+      this.meleeSwing = 1;
+      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
@@ -614,14 +659,100 @@ export class Game {
     }
     this.platforms = this.platforms.filter(p => p.x + p.w > this.camX - 200 && p.y < H + 200);
 
+    // === World ground pickups (coins/tokens/crystals/powerups along the road)
+    while (this.worldPickupNextX < this.camX + W + 400) {
+      const x = this.worldPickupNextX;
+      const r = Math.random();
+      let type: any = "coin", value = randi(1, 30);
+      if (r < 0.05) { // 5% power-up
+        const pr = Math.random();
+        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_for";
+        value = 5; // seconds
+      } else if (r < 0.10) { type = "crystal"; value = randi(1, 3); }
+      else if (r < 0.20) { type = "token"; value = randi(1, 2); }
+      else { type = "coin"; value = randi(1, 30); }
+      this.worldPickups.push({ x, y: GROUND_Y - 14, type, value });
+      this.worldPickupNextX += randi(140, 320);
+    }
+    // Pick up world items on touch
+    this.worldPickups = this.worldPickups.filter(p => {
+      if (p.x < this.camX - 200) return false;
+      const dx = (this.px + this.pw/2) - p.x;
+      const dy = (this.py + this.ph/2) - p.y;
+      if (Math.abs(dx) < 24 && Math.abs(dy) < 28) {
+        if (p.type === "coin") { this.coins += p.value; }
+        else if (p.type === "token") { this.tokens += p.value; }
+        else if (p.type === "crystal") { this.crystals += p.value; }
+        else if (p.type === "pu_dmg") { this.puDamage = 5; this.flashDescription("POWER-UP — 2× DAMAGE (5s)"); }
+        else if (p.type === "pu_spd") { this.puSpeed = 5; this.flashDescription("POWER-UP — 2× SPEED (5s)"); }
+        else if (p.type === "pu_inv") { this.puInvincible = 5; this.flashDescription("POWER-UP — INVINCIBLE (5s)"); }
+        else if (p.type === "pu_for") { this.puForesight = 5; this.flashDescription("POWER-UP — FORESIGHT (5s)"); }
+        return false;
+      }
+      return true;
+    });
+
+    // === Landmarks (safezones)
+    const metersNow = Math.floor(this.worldX / PX_PER_METER);
+    // Spawn next landmark roughly every 1000m (main+ally), 7777m (shady) — predicted positions
+    if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
+      const baseM = metersNow + 200;
+      const nextMain = Math.ceil(baseM / 1000) * 1000;
+      const lx = nextMain * PX_PER_METER;
+      if (!this.landmarks.find(l => Math.abs(l.x - lx) < 200)) {
+        this.landmarks.push({ x: lx, kind: "main", w: 220 });
+        this.landmarks.push({ x: lx + 260, kind: "ally", w: 200 });
+        if (nextMain % 7777 < 1000) this.landmarks.push({ x: lx + 520, kind: "shady", w: 180 });
+      }
+    }
+    this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
+    // Determine if player is inside a safezone
+    this.inSafeZone = this.landmarks.some(l =>
+      this.px + this.pw > l.x && this.px < l.x + l.w);
+
+    // === Weather
+    this.weatherSwitch -= dt;
+    if (this.weatherSwitch <= 0) {
+      const opts: any[] = ["clear","clear","rain","snow","storm"];
+      this.weather = opts[Math.floor(Math.random() * opts.length)];
+      this.weatherSwitch = rand(20, 45);
+      this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
+    }
+    // Rain particle init
+    if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
+      for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
+    }
+    if (this.weather !== "rain" && this.weather !== "storm") this.rainDrops = [];
+    for (const d of this.rainDrops) {
+      d.y += d.vy * dt; d.x -= 60 * dt;
+      if (d.y > H) { d.y = -10; d.x = rand(0, W); }
+    }
+    if (this.lightningFlash > 0) this.lightningFlash -= dt * 4;
+    if (this.weather === "storm") {
+      this.nextLightning -= dt;
+      if (this.nextLightning <= 0) {
+        this.nextLightning = rand(4, 9);
+        this.lightningFlash = 1;
+        this.screenShake = Math.max(this.screenShake, 6);
+        // Strike a random visible enemy or near player
+        if (this.enemies.length && Math.random() < 0.7) {
+          const t = pick(this.enemies);
+          this.damageEnemy(t, 80);
+        } else if (!this.inSafeZone && Math.random() < 0.3) {
+          this.damagePlayer(20);
+        }
+      }
+    }
+
     this.warnTimer -= dt;
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
-      const meters = Math.floor(this.worldX / PX_PER_METER);
-      const toShop = 1000 - (meters % 1000);
-      const toBoss = 5555 - (meters % 5555);
+      const m = Math.floor(this.worldX / PX_PER_METER);
+      const toShop = 1000 - (m % 1000);
+      const toBoss = 5555 - (m % 5555);
       if (toBoss < 80) this.warning = `BOSS APPROACHING — ${toBoss}m`;
       else if (toShop < 60) this.warning = `Main shop — ${toShop}m`;
+      else if (this.inSafeZone) this.warning = `SAFEZONE — protected`;
       else this.warning = null;
     }
 
@@ -835,6 +966,25 @@ export class Game {
           break;
       }
 
+      // === Separation: don't stick to player or each other
+      const distToP = Math.abs((this.px + this.pw/2) - e.x);
+      if (distToP < 36 && (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper")) {
+        // ranged enemies kite away from melee range
+        e.vx = -Math.sign(dx) * 160;
+      }
+      for (const o of this.enemies) {
+        if (o === e || o.flying !== e.flying) continue;
+        const sep = e.x - o.x;
+        if (Math.abs(sep) < 28 && Math.abs(e.y - o.y) < 30) {
+          e.vx += Math.sign(sep || 1) * 80 * dt * 60;
+        }
+      }
+      // Occasional melee swipe for ranged shooters when adjacent
+      if ((e.type === "shooter" || e.type === "shooterElite") && distToP < 44 && e.fireCd <= 0.2) {
+        e.fireCd = 0.9;
+        if (Math.abs(e.y - this.py) < 50) this.damagePlayer(10);
+      }
+
       if (!e.flying) {
         e.vy += 1700 * dt;
         e.y += e.vy * dt;
@@ -842,7 +992,7 @@ export class Game {
       }
       e.x += e.vx * dt;
 
-      // Touch damage
+      // Touch damage with cooldown so they can't spam
       const touching = e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching) {
@@ -909,6 +1059,8 @@ export class Game {
   }
 
   private damagePlayer(dmg: number) {
+    if (this.inSafeZone) return;
+    if (this.puInvincible > 0) return;
     if (this.pInv > 0) return;
     let actual = dmg;
     if (this.shieldActive) actual *= 0.05;
@@ -1021,6 +1173,55 @@ export class Game {
     ctx.fillStyle = "#2a1a0a";
     for (let x = -tileOffset; x < W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 1, H - GROUND_Y);
 
+    // === Landmarks (safezones)
+    for (const l of this.landmarks) {
+      const sx = l.x - this.camX;
+      if (sx + l.w < 0 || sx > W) continue;
+      // Safezone glow
+      ctx.fillStyle = "rgba(123,224,255,0.10)";
+      ctx.fillRect(sx, GROUND_Y - 120, l.w, 120);
+      ctx.strokeStyle = "rgba(123,224,255,0.6)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx, GROUND_Y - 120, l.w, 120);
+      // Building
+      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#8a5a3a";
+      ctx.fillStyle = col;
+      ctx.fillRect(sx + 30, GROUND_Y - 80, l.w - 60, 80);
+      ctx.fillStyle = "#1a1a2e";
+      ctx.fillRect(sx + l.w/2 - 12, GROUND_Y - 50, 24, 50);
+      ctx.fillStyle = "#ffd84a";
+      ctx.fillRect(sx + l.w/2 - 8, GROUND_Y - 110, 16, 14);
+      ctx.fillStyle = "#0a0e1f";
+      ctx.font = "10px monospace";
+      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "SHADY GUY";
+      ctx.fillText(label, sx + 20, GROUND_Y - 96);
+    }
+
+    // === World pickups along the road
+    for (const p of this.worldPickups) {
+      const sx = p.x - this.camX;
+      if (sx < -20 || sx > W + 20) continue;
+      const float = Math.sin(this.animTime * 4 + p.x * 0.01) * 2;
+      let col = "#ffd84a";
+      let label = "";
+      if (p.type === "coin") col = "#ffd84a";
+      else if (p.type === "token") col = "#7be0ff";
+      else if (p.type === "crystal") col = "#d97bff";
+      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
+      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
+      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
+      else if (p.type === "pu_for") { col = "#a78bfa"; label = "FOR"; }
+      ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
+      ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
+      ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
+      if (label) {
+        ctx.font = "8px monospace";
+        ctx.fillStyle = col;
+        ctx.fillText(label, sx - 8, p.y + float - 10);
+      }
+    }
+
+
     // Platforms with variants
     for (const p of this.platforms) {
       const sx = p.x - this.camX;
@@ -1080,7 +1281,27 @@ export class Game {
       ctx.fillRect(sx + 2, e.y + 2, e.w, e.h);
       const baseCol = ENEMY_COLOR[e.type];
       ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
-      ctx.fillRect(sx, e.y, e.w, e.h);
+      ctx.fillRect(sx, e.y, e.w, e.h - 4);
+      // Legs anim (ground enemies only)
+      if (!e.flying) {
+        const ph = Math.sin(this.animTime * 10 + e.x * 0.1);
+        const lOff = Math.max(0, ph) * 3;
+        const rOff = Math.max(0, -ph) * 3;
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillRect(sx + 4, e.y + e.h - 4 + lOff, 5, 4);
+        ctx.fillRect(sx + e.w - 9, e.y + e.h - 4 + rOff, 5, 4);
+      }
+      // Weapon for shooter variants
+      if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
+        ctx.fillStyle = "#222";
+        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 10, 3);
+        else ctx.fillRect(sx - 10, e.y + e.h * 0.45, 10, 3);
+      }
+      if (e.type === "shanker" || e.type === "shankerSwift") {
+        ctx.fillStyle = "#d8e2ff";
+        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.4, 8, 2);
+        else ctx.fillRect(sx - 8, e.y + e.h * 0.4, 8, 2);
+      }
       // outline accents per variant
       if (e.type === "shooterElite") {
         ctx.fillStyle = "#fff"; ctx.fillRect(sx, e.y, e.w, 2); ctx.fillRect(sx, e.y + e.h - 2, e.w, 2);
@@ -1114,27 +1335,59 @@ export class Game {
       ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
     }
 
-    // Player
+    // Player (with walk anim + body parts)
     const psx = this.px - this.camX;
     ctx.fillStyle = COLOR.shadow;
     ctx.fillRect(psx + 3, this.py + 3, this.pw, this.ph);
     const flicker = this.pInv > 0 && Math.floor(this.pInv * 30) % 2 === 0;
+    // Legs (animated)
+    const legPhase = Math.sin(this.animTime * 12);
+    const legOffL = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
+    const legOffR = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
+    ctx.fillStyle = "#3a2a10";
+    ctx.fillRect(psx + 4, this.py + this.ph - 6 + legOffL, 6, 6);
+    ctx.fillRect(psx + this.pw - 10, this.py + this.ph - 6 + legOffR, 6, 6);
+    // Body
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
-    ctx.fillRect(psx, this.py, this.pw, this.ph);
+    ctx.fillRect(psx, this.py, this.pw, this.ph - 6);
+    // Head highlight
+    ctx.fillStyle = "#fde2a0";
+    ctx.fillRect(psx + 4, this.py + 2, this.pw - 8, 10);
     ctx.fillStyle = COLOR.playerOut;
     ctx.fillRect(psx, this.py, this.pw, 2);
-    ctx.fillRect(psx, this.py + this.ph - 2, this.pw, 2);
+    ctx.fillRect(psx, this.py + this.ph - 8, this.pw, 2);
+    // Eye
     ctx.fillStyle = "#000";
     const faceX = this.pFacing > 0 ? psx + this.pw - 9 : psx + 5;
-    ctx.fillRect(faceX, this.py + 12, 4, 4);
-    // gun (color reflects equipped)
-    const eqColor = WEAPONS[this.inventory.loadout[this.inventory.active]].color;
-    ctx.fillStyle = "#222";
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.45, 12, 4);
-    else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 12, 4);
-    ctx.fillStyle = eqColor;
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.45, 2, 2);
-    else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 2, 2);
+    ctx.fillRect(faceX, this.py + 6, 4, 4);
+    // Arm carrying weapon (color reflects equipped)
+    const activeW = WEAPONS[this.inventory.loadout[this.inventory.active]];
+    const eqColor = activeW.color;
+    if (activeW.kind === "melee") {
+      // Melee swing arc
+      const swing = this.meleeSwing;
+      const ang = (this.pFacing > 0 ? 1 : -1) * (1 - swing) * Math.PI * 0.6 - Math.PI/2;
+      const cx = psx + this.pw/2;
+      const cy = this.py + this.ph * 0.45;
+      const len = 22;
+      const ex = cx + Math.cos(ang) * len * (this.pFacing > 0 ? 1 : -1);
+      const ey = cy + Math.sin(ang) * len;
+      ctx.strokeStyle = eqColor; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      if (swing > 0.1) {
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
+        ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = "#222";
+      if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.4, 12, 4);
+      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 12, 4);
+      ctx.fillStyle = eqColor;
+      if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.4, 2, 2);
+      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 2, 2);
+    }
     if (this.shieldActive) {
       ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
@@ -1142,6 +1395,10 @@ export class Game {
     if (this.odActive) {
       ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
       ctx.strokeRect(psx - 3, this.py - 3, this.pw + 6, this.ph + 6);
+    }
+    if (this.puInvincible > 0) {
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 26 + Math.sin(this.animTime*10)*2, 0, Math.PI*2); ctx.stroke();
     }
 
     for (const p of this.particles) {
@@ -1152,6 +1409,39 @@ export class Game {
     }
     ctx.globalAlpha = 1;
     ctx.restore();
+
+    // === Weather overlay (after world transforms restored, screen-space)
+    if (this.weather === "rain" || this.weather === "storm") {
+      ctx.strokeStyle = this.weather === "storm" ? "rgba(180,200,255,0.7)" : "rgba(180,200,255,0.5)";
+      ctx.lineWidth = 1;
+      for (const d of this.rainDrops) {
+        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y + 8); ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(20,20,40,0.25)";
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.weather === "snow") {
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      for (let i = 0; i < 60; i++) {
+        const x = (i * 53 + this.weatherTime * 30) % W;
+        const y = (i * 31 + this.weatherTime * 60) % H;
+        ctx.fillRect(x, y, 2, 2);
+      }
+      ctx.fillStyle = "rgba(200,220,240,0.18)";
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.lightningFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.lightningFlash * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    // Foresight: highlight ahead enemies
+    if (this.puForesight > 0) {
+      ctx.strokeStyle = "rgba(167,139,250,0.7)"; ctx.lineWidth = 1;
+      for (const e of this.enemies) {
+        const sx = e.x - this.camX - e.w/2;
+        ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
+      }
+    }
 
     // Pause/Inventory dim
     if (this.phase === "paused" || this.phase === "inventory") {

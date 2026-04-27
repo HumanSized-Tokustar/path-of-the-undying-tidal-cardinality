@@ -4,7 +4,8 @@ import { WEAPONS } from "@/game/weapons";
 export const Hud = ({ stats }: { stats: GameStats }) => {
   const hpPct = Math.max(0, (stats.hp / stats.maxHp) * 100);
   const odPct = stats.overdriveBar * 100;
-  const active = stats.inventory.active;
+  const inv = stats.inventory ?? { loadout: ["pistol","smg","shotgun"], active: 0, owned: [], consumables: { medkit: 0, ammoPack: 0 }, augments: [] } as any;
+  const active = inv.active;
 
   return (
     <div className="pointer-events-none absolute inset-0 pixel-text text-[10px] md:text-[11px]">
@@ -70,7 +71,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
 
       {/* Hotbar */}
       <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-2">
-        {stats.inventory.loadout.map((wid, i) => {
+        {inv.loadout.map((wid: any, i: number) => {
           const w = WEAPONS[wid];
           const isActive = i === active;
           return (
