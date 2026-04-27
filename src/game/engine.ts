@@ -435,7 +435,11 @@ export class Game {
     // Movement
     let speed = 5 * PX_PER_METER * this.paceMult;
     if (this.rolling) speed *= 1.6;
-    if (this.odActive) speed *= 1.15;
+    if (this.odActive) speed *= 1.25;
+    if (this.puSpeed > 0) speed *= 2;
+    if (this.weather === "rain") speed *= 0.92;
+    if (this.weather === "storm") speed *= 0.85;
+    this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     // Friction from current platform (ice = slippery)
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
