@@ -655,18 +655,34 @@ class Game:
             new_enemies.append(e)
         self.enemies = new_enemies
 
-        # Spawn enemies
+        # Spawn enemies — tide system: +5 allowance per 111 m, "TIDE IS RISING" every 5th tier
+        new_tier = int(meters) // 111
+        if new_tier > self.spawn_tier:
+            gained = new_tier - self.spawn_tier
+            self.spawn_tier = new_tier
+            self.spawn_allowance = min(100, self.spawn_allowance + 5 * gained)
+            for _ in range(gained):
+                self.tide_msg_count += 1
+                if self.tide_msg_count % 5 == 0:
+                    self.tide_msg_text = "THE TIDE IS RISING"
+                    self.tide_msg_timer = 3.5
+                    self.screen_shake = max(self.screen_shake, 8)
         self.spawn_timer -= dt
-        if self.spawn_timer <= 0 and self.enemies_spawned < 100:
+        if (self.spawn_timer <= 0 and
+            self.enemies_spawned < self.spawn_allowance and
+            self.enemies_spawned < 100):
             self.spawn_enemy()
             self.enemies_spawned += 1
-            # Start slow, +2 enemies/sec per 111 m, hard cap at 100 total spawns
-            rate = 0.4 + 2 * (int(meters) // 111)
+            rate = 0.5 + 0.35 * self.spawn_tier
             interval = 1.0 / max(0.2, rate)
             self.spawn_timer = interval * random.uniform(0.85, 1.15)
-            if self.difficulty == "son" and self.enemies_spawned < 100:
+            if (self.difficulty == "son" and
+                self.enemies_spawned < self.spawn_allowance and
+                self.enemies_spawned < 100):
                 self.spawn_enemy()
                 self.enemies_spawned += 1
+        if self.tide_msg_timer > 0:
+            self.tide_msg_timer -= dt
 
         # Maintain platforms
         while not self.platforms or self.last_platform_x() < self.cam_x + W + 600:
