@@ -332,7 +332,7 @@ class Game:
         w = WEAPONS[wid]
         cd_attr = "fire_cd_misc_a" if is_a else "fire_cd_misc_b"
         ch_attr = "misc_a_charge"  if is_a else "misc_b_charge"
-        key = pygame.K_k if is_a else pygame.K_o
+        key = pygame.K_q if is_a else pygame.K_e
         held = keys[key]
         # Deploy
         if key in pressed_set and w["deploy"] and getattr(self, cd_attr) <= 0:
