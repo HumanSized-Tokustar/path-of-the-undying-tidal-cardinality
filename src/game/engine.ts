@@ -68,6 +68,8 @@ interface Input {
   overdrivePressed: boolean;       // G
   parryPressed: boolean;           // E
   grabPressed: boolean;            // F
+  grab: boolean;                   // held for charged throw
+  grabReleased: boolean;
   inventoryPressed: boolean;       // Y
   pausePressed: boolean;           // P
   slotPressed: boolean[]; // 1..6
@@ -280,6 +282,7 @@ export class Game {
       shield: false, shieldPressed: false,
       overdrivePressed: false,
       parryPressed: false, grabPressed: false,
+      grab: false, grabReleased: false,
       inventoryPressed: false, pausePressed: false,
       slotPressed: [false,false,false,false,false,false],
       wheelDelta: 0,
