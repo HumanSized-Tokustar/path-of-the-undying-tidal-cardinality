@@ -25,7 +25,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
               <Btn onClick={() => setView("credits")}>★ CREDITS</Btn>
             </div>
             <div className="mt-4">
-              <div className="text-[9px] text-foreground/70 mb-1">DIFFICULTY</div>
+              <div className="text-[9px] text-foreground/70 mb-1">LEVEL OF ENEMY THREAT</div>
               <div className="flex gap-1 justify-center">
                 {(["dunce","alright","son"] as Difficulty[]).map(d => (
                   <button key={d} onClick={() => setD(d)}

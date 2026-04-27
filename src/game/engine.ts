@@ -133,7 +133,8 @@ export interface InventoryState {
 
 export interface GameStats {
   hp: number; maxHp: number;
-  ammo: number; grenades: number;
+  ammo: number; grenades: number; miscAmmo: number;
+  lives: number;
   coins: number; tokens: number; crystals: number;
   distance: number;
   totalDamage: number;
@@ -175,6 +176,9 @@ export class Game {
   private pJumps = 0; private maxJumps = 2;
   private pFacing: 1 | -1 = 1;
   private pHp = 123; private pMaxHp = 123;
+  private lives = 3;
+  private maxLives = 3;
+  private slowFall = 0; // antigrav: seconds remaining of slow-fall buff
   private pInv = 0;
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
   private dashTrail: { x:number; y:number; life:number }[] = [];
@@ -197,8 +201,6 @@ export class Game {
   // Grab/throw
   private grabbed: Enemy | null = null;
 
-  private untouchedTime = 0;
-  private momentum = 0;
   private paceMult = 1;
 
   private inventory: InventoryState = this.makeInventory();
@@ -215,12 +217,12 @@ export class Game {
   private totalDmg = 0;
   private kills = 0; private bossKills = 0;
   private coins = 100; private tokens = 1; private crystals = 0;
-  private ammo = 240; private grenades = 5;
+  private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
   private spawnTimer = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop) • SHIFT DASH • J FIRE • K MISC A • O MISC B • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
+  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
@@ -382,6 +384,8 @@ export class Game {
     const pm = this.diffPlayerMult();
     this.pMaxHp = 123 * pm;
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
+    this.lives = this.maxLives;
+    this.slowFall = 0;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
@@ -391,10 +395,10 @@ export class Game {
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
-    this.ammo = 240 * pm; this.grenades = 5 * pm;
+    this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
-    this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
+    this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
     this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
@@ -517,18 +521,14 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Pacing
-    this.untouchedTime += dt;
-    if (this.untouchedTime > 3) this.momentum = Math.min(1, this.momentum + dt / 25);
+    // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
     const meters = this.worldX / PX_PER_METER;
-    // Base 15 m/s, +10 per 400m, cap 105
-    const stepIncrements = Math.floor(meters / 400);
+    const stepIncrements = Math.floor(meters / 300);
     const baseMs = Math.min(105, 15 + stepIncrements * 10);
-    const momentumMult = 1 + this.momentum * 0.15;
-    this.paceMult = (baseMs / 15) * momentumMult;
+    this.paceMult = baseMs / 15;
 
     // Movement: convert m/s to px/s
-    let speed = baseMs * (PX_PER_METER / 3) * momentumMult; // tuned: ~5px/m visual, scales smoothly
+    let speed = baseMs * (PX_PER_METER / 3);
     if (this.rolling) speed *= 1.6;
     if (this.odActive) speed *= 1.25;
     if (this.puSpeed > 0) speed *= 2;
@@ -589,8 +589,20 @@ export class Game {
 
     if (!this.pOnGround && this.input.down && !this.slamming) { this.slamming = true; this.pvy = 900; }
 
-    this.pvy += 1700 * dt;
-    if (this.pvy > 1200) this.pvy = 1200;
+    // Slow-fall (antigrav) reduces gravity & terminal velocity
+    if (this.slowFall > 0) this.slowFall -= dt;
+    const gravMul = this.slowFall > 0 ? 0.35 : 1;
+    this.pvy += 1700 * dt * gravMul;
+    const termV = this.slowFall > 0 ? 380 : 1200;
+    if (this.pvy > termV) this.pvy = termV;
+
+    // Ladder climbing — if overlapping a ladder platform and holding W/S
+    const ladder = this.findOverlappingLadder();
+    if (ladder) {
+      if (this.input.up)   { this.pvy = -260; this.pOnGround = false; }
+      else if (this.input.down) { this.pvy = 260; }
+      else                 { this.pvy *= 0.4; }
+    }
 
     this.px += this.pvx * dt;
     this.resolveCollisionsX();
@@ -887,7 +899,10 @@ export class Game {
 
     // Deploy weapons (medkit) — fire on press
     if ((isA ? this.input.miscAPressed : this.input.miscBPressed) && w.deploy && (this as any)[cdRef] <= 0) {
+      // Deploy items also pull from the unified misc pool
+      if (this.miscAmmo <= 0) { this.flashDescription("OUT OF MISC"); return; }
       (this as any)[cdRef] = w.fireCd;
+      this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       if (w.id === "medkit") this.useMedkit(); // direct heal
       else if (w.id === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
@@ -921,6 +936,7 @@ export class Game {
     }
     // Release: throw
     if (releasedKey && (this as any)[cdRef] <= 0 && !w.deploy) {
+      if (this.miscAmmo <= 0) { (this as any)[chargeRef] = 0; this.flashDescription("OUT OF MISC"); return; }
       const charge = clamp((this as any)[chargeRef] / 1.2, 0, 1);
       (this as any)[chargeRef] = 0;
       (this as any)[cdRef] = w.fireCd;
@@ -934,7 +950,7 @@ export class Game {
         color: w.color,
         kind: w.id === "molotov" ? "molotov" : "normal",
       });
-      if (wid === "grenade") this.grenades = Math.max(0, this.grenades - 1);
+      this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       audio.play("miscthrow");
       this.flashDescription(`THROW MISC — ${w.name} (${Math.round(charge*100)}% charge)`);
     }
@@ -1114,6 +1130,14 @@ export class Game {
         this.currentPlatform = p;
         if (p.kind === "spike") this.damagePlayer(v.damageOnTop);
         if (p.kind === "crumble" && !p.cracked) { p.cracked = true; p.crumbleTimer = 0.5; }
+        if (v.slowFallSeconds && this.slowFall <= 0.1) {
+          this.slowFall = v.slowFallSeconds;
+          this.flashDescription(`ANTIGRAV PAD — slow fall ${v.slowFallSeconds}s`);
+        }
+        if (p.kind === "jumppad") {
+          this.flashDescription("JUMP PAD!");
+          for (let i = 0; i < 8; i++) this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#ff5af0");
+        }
         if (p.kind === "cloud" && p.cloudActive) {
           // start fading after step
           setTimeout(() => { if (p.cloudActive) { p.cloudActive = false; p.cloudRespawn = 3; } }, 1000);
@@ -1429,9 +1453,7 @@ export class Game {
     this.pHp -= actual;
     this.pInv = 0.4;
     this.screenShake = Math.max(this.screenShake, 6);
-    this.untouchedTime = 0;
-    this.momentum = Math.max(0, this.momentum - 0.35);
-    this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (rebuild by avoiding damage)`);
+    this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (distance-based)`);
   }
 
   private spawnPuff(x: number, y: number, color: string) {
@@ -1441,7 +1463,32 @@ export class Game {
     });
   }
 
+  // Ladder helper: returns ladder platform if player overlaps it
+  private findOverlappingLadder(): Platform | null {
+    for (const p of this.platforms) {
+      if (p.kind !== "ladder") continue;
+      if (this.px + this.pw > p.x && this.px < p.x + p.w &&
+          this.py + this.ph > p.y && this.py < p.y + p.h + 60) return p;
+    }
+    return null;
+  }
+
   private die() {
+    // 3-life system: respawn unless out of lives
+    if (this.lives > 1) {
+      this.lives--;
+      this.pHp = this.pMaxHp;
+      this.pInv = 2.0;
+      this.pvy = -300; this.pvx = 0;
+      this.screenShake = Math.max(this.screenShake, 14);
+      // clear nearby threats (small mercy)
+      for (const e of this.enemies) {
+        if (Math.abs(e.x - this.px) < 220 && !e.dying) e.disabled = Math.max(e.disabled, 1.2);
+      }
+      this.flashDescription(`LIFE LOST — ${this.lives}/${this.maxLives} REMAINING`);
+      audio.play("death");
+      return;
+    }
     audio.play("death");
     audio.stopMusic();
     this.phase = "dead";
@@ -1457,7 +1504,7 @@ export class Game {
       : (this.warning ? `! ${this.warning} !` : `${activeName} EQUIPPED  •  ${Math.floor(meters)}m  •  PACE ${this.paceMult.toFixed(2)}×  •  ♪ ${audio.currentTrackName()}`);
     this.onStatsChange({
       hp: this.pHp, maxHp: this.pMaxHp,
-      ammo: this.ammo, grenades: this.grenades,
+      ammo: this.ammo, grenades: this.miscAmmo, miscAmmo: this.miscAmmo, lives: this.lives,
       coins: this.coins, tokens: this.tokens, crystals: this.crystals,
       distance: meters,
       totalDamage: this.totalDmg,
@@ -1572,6 +1619,67 @@ export class Game {
       ctx.fillText(label, sx + 20, GROUND_Y - 96);
     }
 
+    // === START PORTAL (ominous orb with infinity sigil) at worldX = 0
+    {
+      const portalWorldX = 90;
+      const sx = portalWorldX - this.camX;
+      if (sx > -120 && sx < W + 120) {
+        const baseY = GROUND_Y - 4;
+        // Stone arch base
+        ctx.fillStyle = "#1a1426";
+        ctx.fillRect(sx - 50, baseY - 110, 100, 110);
+        ctx.fillStyle = "#2a1f3a";
+        ctx.fillRect(sx - 46, baseY - 106, 92, 102);
+        // Pillar runes
+        ctx.fillStyle = "#7b4adf";
+        for (let i = 0; i < 4; i++) ctx.fillRect(sx - 44, baseY - 100 + i * 22, 4, 12);
+        for (let i = 0; i < 4; i++) ctx.fillRect(sx + 40, baseY - 100 + i * 22, 4, 12);
+        // Inner dark arch
+        ctx.fillStyle = "#0a0612";
+        ctx.beginPath();
+        ctx.moveTo(sx - 32, baseY);
+        ctx.lineTo(sx - 32, baseY - 60);
+        ctx.quadraticCurveTo(sx, baseY - 100, sx + 32, baseY - 60);
+        ctx.lineTo(sx + 32, baseY);
+        ctx.closePath(); ctx.fill();
+        // Ominous orb
+        const orbY = baseY - 60;
+        const pulse = 0.5 + 0.5 * Math.sin(this.weatherTime * 2);
+        // Outer glow
+        ctx.globalAlpha = 0.25 + pulse * 0.25;
+        ctx.fillStyle = "#a87bff";
+        ctx.beginPath(); ctx.arc(sx, orbY, 30, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        // Orb core
+        const grad2 = ctx.createRadialGradient(sx - 4, orbY - 4, 2, sx, orbY, 22);
+        grad2.addColorStop(0, "#fff");
+        grad2.addColorStop(0.4, "#c9a8ff");
+        grad2.addColorStop(1, "#3a1a6a");
+        ctx.fillStyle = grad2;
+        ctx.beginPath(); ctx.arc(sx, orbY, 22, 0, Math.PI * 2); ctx.fill();
+        // Swirl marks
+        ctx.strokeStyle = "rgba(20,5,40,0.6)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(sx, orbY, 14, this.weatherTime, this.weatherTime + Math.PI * 1.4);
+        ctx.stroke();
+        // ∞ sigil floating ABOVE the orb
+        const sigY = orbY - 42;
+        // glow under sigil
+        ctx.globalAlpha = 0.35 + pulse * 0.3;
+        ctx.fillStyle = "#a87bff";
+        ctx.fillRect(sx - 18, sigY - 4, 36, 8);
+        ctx.globalAlpha = 1;
+        this.drawInfinity(ctx, sx, sigY, 14, "#fff");
+        this.drawInfinity(ctx, sx, sigY, 11, "#d8c4ff");
+        // Floating embers
+        for (let i = 0; i < 5; i++) {
+          const t = (this.weatherTime * 0.6 + i * 0.3) % 1;
+          ctx.fillStyle = `rgba(200,160,255,${1 - t})`;
+          ctx.fillRect(sx + Math.sin(i * 1.7 + this.weatherTime) * 22, orbY - t * 50, 2, 2);
+        }
+      }
+    }
+
     // World pickups
     for (const p of this.worldPickups) {
       const sx = p.x - this.camX;
@@ -1579,20 +1687,69 @@ export class Game {
       const float = Math.sin(this.animTime * 4 + p.x * 0.01) * 2;
       let col = "#ffd84a";
       let label = "";
+      let icon = "";
       if (p.type === "coin") col = "#ffd84a";
       else if (p.type === "token") col = "#7be0ff";
       else if (p.type === "crystal") col = "#d97bff";
-      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
-      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
-      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
-      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; }
-      ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
-      ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
-      ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
-      if (label) {
-        ctx.font = "8px monospace";
+      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; icon = "+"; }
+      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; icon = ">"; }
+      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; icon = "*"; }
+      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; icon = "~"; }
+      const py = p.y + float;
+      // Soft halo glow (pulsing)
+      const pulse = 0.5 + 0.5 * Math.sin(this.animTime * 5 + p.x * 0.02);
+      ctx.globalAlpha = 0.18 + pulse * 0.18;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(sx, py, 11 + pulse * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Coin/token/crystal: render gem or coin
+      if (p.type === "coin") {
+        // Coin: outer ring + inner
+        ctx.fillStyle = "#7a5a10"; ctx.fillRect(sx - 6, py - 6, 12, 12);
+        ctx.fillStyle = col; ctx.fillRect(sx - 5, py - 5, 10, 10);
+        ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 4, py - 4, 2, 2);
+        ctx.fillStyle = "#a07020"; ctx.fillRect(sx - 2, py + 1, 4, 1);
+      } else if (p.type === "crystal") {
+        // Diamond shape
+        ctx.fillStyle = "#0008";
+        ctx.beginPath(); ctx.moveTo(sx, py - 7); ctx.lineTo(sx + 6, py); ctx.lineTo(sx, py + 7); ctx.lineTo(sx - 6, py); ctx.closePath(); ctx.fill();
         ctx.fillStyle = col;
-        ctx.fillText(label, sx - 8, p.y + float - 10);
+        ctx.beginPath(); ctx.moveTo(sx, py - 6); ctx.lineTo(sx + 5, py); ctx.lineTo(sx, py + 6); ctx.lineTo(sx - 5, py); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(sx - 2, py - 3, 2, 2);
+      } else if (p.type === "token") {
+        // Hex token
+        ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, py - 6, 12, 12);
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          const x = sx + Math.cos(a) * 6, y = py + Math.sin(a) * 6;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(sx - 1, py - 1, 2, 2);
+      } else {
+        // Power-up capsule
+        ctx.fillStyle = "#0a0e1f";
+        ctx.fillRect(sx - 7, py - 8, 14, 16);
+        ctx.fillStyle = col;
+        ctx.fillRect(sx - 6, py - 7, 12, 14);
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(sx - 5, py - 6, 3, 6);
+        ctx.fillStyle = "#0a0e1f";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText(icon, sx - 2, py + 2);
+      }
+      if (label) {
+        ctx.font = "7px monospace";
+        ctx.fillStyle = col;
+        ctx.fillText(label, sx - label.length * 2, py - 11);
+      }
+      // Sparkle bits
+      if ((Math.floor(this.animTime * 6) + Math.floor(p.x * 0.1)) % 5 === 0) {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(sx + 6, py - 8, 1, 1);
+        ctx.fillRect(sx - 8, py + 4, 1, 1);
       }
     }
 
@@ -1647,6 +1804,40 @@ export class Game {
         ctx.moveTo(sx + p.w * 0.3, p.y); ctx.lineTo(sx + p.w * 0.4, p.y + p.h);
         ctx.moveTo(sx + p.w * 0.7, p.y); ctx.lineTo(sx + p.w * 0.6, p.y + p.h);
         ctx.stroke();
+      }
+      if (p.kind === "ladder") {
+        // Draw rails + rungs going up from platform top
+        ctx.fillStyle = "#3a2010";
+        const railL = sx + 4, railR = sx + p.w - 6;
+        for (let yy = p.y - 80; yy < p.y + p.h; yy += 4) {
+          ctx.fillRect(railL, yy, 2, 3);
+          ctx.fillRect(railR, yy, 2, 3);
+        }
+        ctx.fillStyle = "#5a3010";
+        for (let yy = p.y - 76; yy < p.y + p.h; yy += 8) {
+          ctx.fillRect(railL + 2, yy, p.w - 12, 2);
+        }
+      }
+      if (p.kind === "jumppad") {
+        // pulsing arrow
+        const pulse = 0.5 + 0.5 * Math.sin(this.weatherTime * 8);
+        ctx.fillStyle = `rgba(255,255,255,${0.4 + pulse * 0.5})`;
+        const cx = sx + p.w/2;
+        ctx.beginPath();
+        ctx.moveTo(cx, p.y - 8 - pulse * 3);
+        ctx.lineTo(cx - 6, p.y - 1);
+        ctx.lineTo(cx + 6, p.y - 1);
+        ctx.closePath(); ctx.fill();
+      }
+      if (p.kind === "antigrav") {
+        // floating particles + glow halo
+        ctx.fillStyle = "rgba(155,232,255,0.45)";
+        for (let i = 0; i < 4; i++) {
+          const t = (this.weatherTime + i * 0.6) % 1.5;
+          ctx.fillRect(sx + 8 + i * (p.w / 5), p.y - 4 - t * 18, 2, 2);
+        }
+        ctx.strokeStyle = "rgba(155,232,255,0.6)"; ctx.lineWidth = 1;
+        ctx.strokeRect(sx, p.y - 1, p.w, 2);
       }
     }
 
@@ -1900,6 +2091,17 @@ export class Game {
     if (this.shieldActive) {
       ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    // Slow-fall (antigrav) aura — cyan feathers
+    if (this.slowFall > 0) {
+      ctx.strokeStyle = "rgba(155,232,255,0.7)"; ctx.lineWidth = 1;
+      const r = 18 + Math.sin(this.animTime * 8) * 2;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, r, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 3; i++) {
+        const yy = psy + this.ph + ((this.animTime * 30 + i * 8) % 18);
+        ctx.fillStyle = "rgba(155,232,255,0.7)";
+        ctx.fillRect(psx + 4 + i * 6, yy, 2, 4);
+      }
     }
     if (this.odActive) {
       ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
