@@ -401,15 +401,35 @@ class Game:
         elif keys[pygame.K_d]: self.p_facing = 1; self.pvx = speed
         else: self.pvx = 0
 
-        # Dash
-        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0:
-            self.dash_time = 0.28
-            self.p_inv = max(self.p_inv, 0.28)
-            self.dash_charges -= 1
-            if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Dash / Roll (S+SHIFT)
+        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
+            if keys[pygame.K_s] and self.p_on_ground:
+                self.rolling = True
+                self.roll_time = 0.56          # 2× dash duration
+                self.p_inv = max(self.p_inv, 0.56)
+                self.dash_charges -= 1
+                if self.dash_recharge <= 0: self.dash_recharge = 2
+            else:
+                self.dash_time = 0.28
+                self.p_inv = max(self.p_inv, 0.28)
+                self.dash_charges -= 1
+                if self.dash_recharge <= 0: self.dash_recharge = 2
         if self.dash_time > 0:
             self.pvx = self.p_facing * speed * 3.4
             self.dash_time -= dt
+        if self.rolling:
+            self.roll_time -= dt
+            self.pvx = self.p_facing * speed * 1.8
+            # Knock enemies in path
+            for e in self.enemies:
+                if e["dying"]: continue
+                if abs(e["x"] - (self.px+self.pw/2)) < 36 and abs(e["y"] - (self.py+self.ph/2)) < 30:
+                    e["vx"] = self.p_facing * 520
+                    e["vy"] = -360
+                    e["disabled"] = max(e["disabled"], 0.8)
+                    self.damage_enemy(e, 12)
+            if self.roll_time <= 0:
+                self.rolling = False
         if self.dash_recharge > 0:
             self.dash_recharge -= dt
             if self.dash_recharge <= 0 and self.dash_charges < 2:
