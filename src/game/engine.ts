@@ -1462,6 +1462,7 @@ export class Game {
           for (const p of this.platforms) {
             const v = PLATFORM_VARIANTS[p.kind];
             if (v.hazardSpikes) continue;
+            if (p.kind === "ladder") continue;
             if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w) {
               const top = p.y;
               const prevBottom = e.y + e.h - e.vy * dt;
