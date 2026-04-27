@@ -1917,17 +1917,20 @@ export class Game {
         ctx.stroke();
       }
       if (p.kind === "ladder") {
-        // Draw rails + rungs going up from platform top
-        ctx.fillStyle = "#3a2010";
-        const railL = sx + 4, railR = sx + p.w - 6;
-        for (let yy = p.y - 80; yy < p.y + p.h; yy += 4) {
-          ctx.fillRect(railL, yy, 2, 3);
-          ctx.fillRect(railR, yy, 2, 3);
-        }
+        // Vertical ladder attached to the side of a base platform
+        ctx.clearRect(sx, p.y, p.w, p.h); // we don't want the body block
+        // Rails
         ctx.fillStyle = "#5a3010";
-        for (let yy = p.y - 76; yy < p.y + p.h; yy += 8) {
-          ctx.fillRect(railL + 2, yy, p.w - 12, 2);
+        ctx.fillRect(sx + 1, p.y, 2, p.h);
+        ctx.fillRect(sx + p.w - 3, p.y, 2, p.h);
+        // Rungs
+        ctx.fillStyle = "#c08a40";
+        for (let yy = p.y + 4; yy < p.y + p.h - 2; yy += 8) {
+          ctx.fillRect(sx + 2, yy, p.w - 4, 2);
         }
+        // Faint glow on top to show climb-up zone
+        ctx.fillStyle = "rgba(255,232,180,0.25)";
+        ctx.fillRect(sx, p.y - 2, p.w, 2);
       }
       if (p.kind === "jumppad") {
         // pulsing arrow
