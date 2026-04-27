@@ -488,6 +488,7 @@ class Game:
         if self.pvy > 0:
             for p in self.platforms:
                 v = PLATFORM_VARIANTS[p["kind"]]
+                if p["kind"] == "ladder": continue
                 if (self.px + self.pw > p["x"] and self.px < p["x"]+p["w"] and
                     self.py + self.ph >= p["y"] and self.py + self.ph - self.pvy*0.02 <= p["y"] + 4):
                     self.py = p["y"] - self.ph
