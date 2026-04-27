@@ -1130,6 +1130,14 @@ export class Game {
         this.currentPlatform = p;
         if (p.kind === "spike") this.damagePlayer(v.damageOnTop);
         if (p.kind === "crumble" && !p.cracked) { p.cracked = true; p.crumbleTimer = 0.5; }
+        if (v.slowFallSeconds && this.slowFall <= 0.1) {
+          this.slowFall = v.slowFallSeconds;
+          this.flashDescription(`ANTIGRAV PAD — slow fall ${v.slowFallSeconds}s`);
+        }
+        if (p.kind === "jumppad") {
+          this.flashDescription("JUMP PAD!");
+          for (let i = 0; i < 8; i++) this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#ff5af0");
+        }
         if (p.kind === "cloud" && p.cloudActive) {
           // start fading after step
           setTimeout(() => { if (p.cloudActive) { p.cloudActive = false; p.cloudRespawn = 3; } }, 1000);
