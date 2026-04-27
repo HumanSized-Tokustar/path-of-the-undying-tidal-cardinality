@@ -489,8 +489,8 @@ class Game:
         for attr in ("pu_damage","pu_speed","pu_invincible","pu_chrono"):
             if getattr(self, attr) > 0: setattr(self, attr, getattr(self, attr) - dt)
 
-        # J fire
-        if keys[pygame.K_j] and self.fire_cd_r <= 0:
+        # F fire (ranged)
+        if keys[pygame.K_f] and self.fire_cd_r <= 0:
             wid = self.inventory["ranged"][self.inventory["active_ranged"]]
             w = WEAPONS[wid]
             if w["kind"] == "ranged" and self.ammo >= w["ammo"]:
