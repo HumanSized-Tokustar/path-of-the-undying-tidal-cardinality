@@ -233,16 +233,34 @@ class Game:
         if random.random() < 0.5: return
         meters = self.world_x / PX_PER_METER
         kind = pick_platform_kind(meters)
+        # Ladders aren't standalone — convert to stone here, then maybe attach a ladder beside.
+        if kind == "ladder":
+            kind = "stone"
         w = random.randint(80, 180)
         y = random.randint(280, 400)
-        self.platforms.append(dict(
+        base = dict(
             x=x, y=y, w=w, h=16, kind=kind,
             cracked=False, crumble_timer=0, falling=False, fall_vy=0,
             base_x=x, base_y=y, phase=random.random()*math.pi*2,
             horizontal=random.random()<0.5,
             conveyor_dir=1 if random.random()<0.5 else -1,
             cloud_fade=1.0, cloud_active=True, cloud_respawn=0,
-        ))
+        )
+        self.platforms.append(base)
+        # ~30% chance: attach a climbable side-ladder from platform top to ground.
+        if kind in ("stone","floating","crumble","ice","moving") and y < GROUND_Y - 40 and random.random() < 0.3:
+            on_left = random.random() < 0.5
+            lw = 12
+            lx = x - lw if on_left else x + w
+            ly = y
+            lh = GROUND_Y - ly
+            self.platforms.append(dict(
+                x=lx, y=ly, w=lw, h=lh, kind="ladder",
+                cracked=False, crumble_timer=0, falling=False, fall_vy=0,
+                base_x=lx, base_y=ly, phase=0,
+                horizontal=False, conveyor_dir=1,
+                cloud_fade=1.0, cloud_active=True, cloud_respawn=0,
+            ))
 
     def find_overlapping_ladder(self):
         for p in self.platforms:
