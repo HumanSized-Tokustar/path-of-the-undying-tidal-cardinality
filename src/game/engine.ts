@@ -1278,12 +1278,33 @@ export class Game {
         }
       }
 
+      const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
-        e.vy += 1700 * dt;
+        e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
         if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
+        // Land on platform tops (enemies can sometimes reach platforms)
+        if (e.vy > 0) {
+          for (const p of this.platforms) {
+            const v = PLATFORM_VARIANTS[p.kind];
+            if (v.hazardSpikes) continue;
+            if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w) {
+              const top = p.y;
+              const prevBottom = e.y + e.h - e.vy * dt;
+              if (prevBottom <= top + 2 && e.y + e.h >= top) {
+                e.y = top - e.h; e.vy = 0; e.onGround = true;
+                if (v.bounce && Math.random() < 0.5) e.vy = -520 * v.bounce;
+                break;
+              }
+            }
+          }
+        }
+        // Occasional jump toward player platform
+        if (e.onGround && e.jumpCd <= 0 && Math.random() < 0.008 * espd) {
+          e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
+        }
       }
-      if (!e.thrown) e.x += e.vx * dt;
+      if (!e.thrown) e.x += e.vx * dt * espd;
 
       // Touch damage
       const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
