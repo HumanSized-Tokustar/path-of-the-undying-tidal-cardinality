@@ -521,7 +521,7 @@ class Game:
         self.handle_misc("A", dt, keys, pressed_set, released_set)
         self.handle_misc("B", dt, keys, pressed_set, released_set)
 
-        # E parry
+        # C parry
         cx, cy = self.px+self.pw/2, self.py+self.ph/2
         if self.parry_window <= 0:
             for b in self.bullets:
@@ -531,7 +531,7 @@ class Game:
                     self.parry_window = 0.35; break
         else:
             self.parry_window -= dt
-        if pygame.K_e in pressed_set and self.parry_window > 0:
+        if pygame.K_c in pressed_set and self.parry_window > 0:
             for b in list(self.bullets):
                 if not b["friendly"] and math.hypot(b["x"]-cx, b["y"]-cy) < 90:
                     b["friendly"] = True; b["dmg"] *= 2
