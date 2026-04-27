@@ -1695,6 +1695,40 @@ export class Game {
         ctx.moveTo(sx + p.w * 0.7, p.y); ctx.lineTo(sx + p.w * 0.6, p.y + p.h);
         ctx.stroke();
       }
+      if (p.kind === "ladder") {
+        // Draw rails + rungs going up from platform top
+        ctx.fillStyle = "#3a2010";
+        const railL = sx + 4, railR = sx + p.w - 6;
+        for (let yy = p.y - 80; yy < p.y + p.h; yy += 4) {
+          ctx.fillRect(railL, yy, 2, 3);
+          ctx.fillRect(railR, yy, 2, 3);
+        }
+        ctx.fillStyle = "#5a3010";
+        for (let yy = p.y - 76; yy < p.y + p.h; yy += 8) {
+          ctx.fillRect(railL + 2, yy, p.w - 12, 2);
+        }
+      }
+      if (p.kind === "jumppad") {
+        // pulsing arrow
+        const pulse = 0.5 + 0.5 * Math.sin(this.weatherTime * 8);
+        ctx.fillStyle = `rgba(255,255,255,${0.4 + pulse * 0.5})`;
+        const cx = sx + p.w/2;
+        ctx.beginPath();
+        ctx.moveTo(cx, p.y - 8 - pulse * 3);
+        ctx.lineTo(cx - 6, p.y - 1);
+        ctx.lineTo(cx + 6, p.y - 1);
+        ctx.closePath(); ctx.fill();
+      }
+      if (p.kind === "antigrav") {
+        // floating particles + glow halo
+        ctx.fillStyle = "rgba(155,232,255,0.45)";
+        for (let i = 0; i < 4; i++) {
+          const t = (this.weatherTime + i * 0.6) % 1.5;
+          ctx.fillRect(sx + 8 + i * (p.w / 5), p.y - 4 - t * 18, 2, 2);
+        }
+        ctx.strokeStyle = "rgba(155,232,255,0.6)"; ctx.lineWidth = 1;
+        ctx.strokeRect(sx, p.y - 1, p.w, 2);
+      }
     }
 
     for (const p of this.pickups) {
