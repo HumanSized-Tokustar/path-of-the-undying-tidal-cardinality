@@ -563,7 +563,13 @@ export class Game {
 
     // Dash (with i-frames)
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
-      if (this.input.down && this.pOnGround) { this.rolling = true; this.rollTime = 0.5; }
+      if (this.input.down && this.pOnGround) {
+        this.rolling = true;
+        this.rollTime = 0.56;          // 2× dash duration
+        this.pInv = Math.max(this.pInv, 0.56); // i-frames whole roll
+        this.dashCharges--;
+        if (this.dashRecharge <= 0) this.dashRecharge = 2;
+      }
       else {
         this.dashTime = 0.28; // longer dash
         this.pInv = Math.max(this.pInv, 0.28); // i-frames whole dash
@@ -577,7 +583,24 @@ export class Game {
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
-    if (this.rolling) { this.rollTime -= dt; this.pvx = this.pFacing * speed * 1.6; if (this.rollTime <= 0) this.rolling = false; }
+    if (this.rolling) {
+      this.rollTime -= dt;
+      this.pvx = this.pFacing * speed * 1.8;
+      // Knock enemies in path away
+      const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+      for (const e of this.enemies) {
+        if (e.dying || e.thrown || e.grabbed) continue;
+        const dx = e.x - cx, dy = e.y - cy;
+        if (Math.abs(dx) < 36 && Math.abs(dy) < 30) {
+          e.vx = this.pFacing * 520;
+          e.vy = -360;
+          e.disabled = Math.max(e.disabled, 0.8);
+          this.damageEnemy(e, 12);
+          for (let i = 0; i < 4; i++) this.spawnPuff(e.x, e.y + e.h/2, "#cfe");
+        }
+      }
+      if (this.rollTime <= 0) this.rolling = false;
+    }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
       if (this.dashRecharge <= 0 && this.dashCharges < 2) {
