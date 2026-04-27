@@ -1964,17 +1964,38 @@ export class Game {
     ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
     ctx.fillRect(sx + 3, e.y + 12, e.w - 6, e.h - 22);
     // Body shading (left strip)
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
     ctx.fillRect(sx + 3, e.y + 12, 2, e.h - 22);
+    // Body highlight (right strip)
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    ctx.fillRect(sx + e.w - 5, e.y + 12, 2, e.h - 22);
+    // Shoulder pads
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(sx + 2, e.y + 12, e.w - 4, 3);
+    // Chest plate (V stripe)
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(sx + e.w/2 - 1, e.y + 14, 2, 8);
     // Belt
     ctx.fillStyle = "#1a0a05";
     ctx.fillRect(sx + 3, e.y + e.h - 14, e.w - 6, 2);
+    // Belt buckle
+    ctx.fillStyle = "#7a5a2a";
+    ctx.fillRect(sx + e.w/2 - 2, e.y + e.h - 14, 4, 2);
+    // Arms
+    ctx.fillStyle = baseCol;
+    ctx.fillRect(sx + 1, e.y + 15, 3, e.h - 28);
+    ctx.fillRect(sx + e.w - 4, e.y + 15, 3, e.h - 28);
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(sx + 1, e.y + 15, 1, e.h - 28);
     // Head
     ctx.fillStyle = "#e8c89a";
     ctx.fillRect(sx + 6, e.y + 4, e.w - 12, 10);
     // Head shading
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
     ctx.fillRect(sx + 6, e.y + 4, 2, 10);
+    // Jaw shadow
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(sx + 6, e.y + 12, e.w - 12, 2);
     // Eyes (red glow)
     ctx.fillStyle = "#ff3030";
     const eyeX = e.facing > 0 ? sx + e.w - 9 : sx + 7;
