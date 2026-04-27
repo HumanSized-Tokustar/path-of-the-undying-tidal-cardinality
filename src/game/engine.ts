@@ -2158,6 +2158,42 @@ export class Game {
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.fillRect(psx + 2, GROUND_Y - 2, this.pw, 3);
 
+    // Spinning roll: draw player as a tumbling ball with motion lines
+    if (this.rolling) {
+      const cx = psx + this.pw / 2;
+      const cy = psy + this.ph - 14;
+      const r = 16;
+      const spin = this.animTime * 22 * this.pFacing;
+      ctx.fillStyle = COLOR.playerOut;
+      ctx.beginPath(); ctx.arc(cx, cy, r + 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = flicker ? "#fff" : COLOR.player;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = COLOR_PLAYER_HI;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(spin) * 4, cy + Math.sin(spin) * 4, r - 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Yellow buckle dot orbiting
+      ctx.fillStyle = COLOR.playerBuckle;
+      const bx = cx + Math.cos(spin * 1.4) * (r - 5);
+      const by = cy + Math.sin(spin * 1.4) * (r - 5);
+      ctx.fillRect(bx - 2, by - 2, 4, 4);
+      // Hat brim flickering through the spin
+      ctx.fillStyle = "#3a2a10";
+      ctx.fillRect(cx - r + 2, cy + Math.sin(spin) * 6, r * 2 - 4, 2);
+      // Motion blur lines behind
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      for (let i = 1; i <= 4; i++) {
+        const ox = -this.pFacing * (6 + i * 5);
+        ctx.beginPath();
+        ctx.moveTo(cx + ox, cy - 6 + i);
+        ctx.lineTo(cx + ox - this.pFacing * 10, cy - 6 + i);
+        ctx.stroke();
+      }
+      if (Math.random() < 0.4) this.spawnPuff(this.px + this.pw/2, GROUND_Y - 4, "#cfe");
+      return;
+    }
+
     const legPhase = Math.sin(this.animTime * 12);
     const lOff = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
     const rOff = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
