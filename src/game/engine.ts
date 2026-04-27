@@ -1454,6 +1454,17 @@ export class Game {
 
       const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
+        // Climb ladders if overlapping one and player is higher than the enemy
+        let onLadder = false;
+        for (const p of this.platforms) {
+          if (p.kind !== "ladder") continue;
+          if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w &&
+              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = true; break; }
+        }
+        if (onLadder && this.py + this.ph < e.y + 4) {
+          e.vy = -150;
+          e.onGround = false;
+        }
         e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
         if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
