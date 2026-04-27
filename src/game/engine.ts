@@ -391,7 +391,7 @@ export class Game {
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
     this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
-    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puForesight = 0;
+    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.miscACharge = 0; this.miscBCharge = 0;
@@ -641,7 +641,7 @@ export class Game {
     if (this.puDamage > 0) this.puDamage -= dt;
     if (this.puSpeed > 0) this.puSpeed -= dt;
     if (this.puInvincible > 0) { this.puInvincible -= dt; this.pInv = Math.max(this.pInv, 0.1); }
-    if (this.puForesight > 0) this.puForesight -= dt;
+    if (this.puChrono > 0) this.puChrono -= dt;
 
     // J = fire active ranged
     if (this.input.fireR && this.fireCdR <= 0) {
@@ -777,7 +777,7 @@ export class Game {
       let type: any = "coin", value = randi(1, 30);
       if (r < 0.10) {
         const pr = Math.random();
-        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_for";
+        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_chr";
         value = 5;
       } else if (r < 0.18) { type = "crystal"; value = randi(1, 3); }
       else if (r < 0.32) { type = "token"; value = randi(1, 2); }
@@ -796,7 +796,7 @@ export class Game {
         else if (p.type === "pu_dmg") { this.puDamage = 5; this.flashDescription("POWER-UP — 2× DAMAGE (5s)"); }
         else if (p.type === "pu_spd") { this.puSpeed = 5; this.flashDescription("POWER-UP — 2× SPEED (5s)"); }
         else if (p.type === "pu_inv") { this.puInvincible = 5; this.flashDescription("POWER-UP — INVINCIBLE (5s)"); }
-        else if (p.type === "pu_for") { this.puForesight = 5; this.flashDescription("POWER-UP — FORESIGHT (5s)"); }
+        else if (p.type === "pu_chr") { this.puChrono = 5; this.flashDescription("POWER-UP — CHRONO SLOW (5s)"); }
         return false;
       }
       return true;
@@ -1513,7 +1513,7 @@ export class Game {
       else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
       else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
       else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
-      else if (p.type === "pu_for") { col = "#a78bfa"; label = "FOR"; }
+      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; }
       ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
       ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
       ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
@@ -1659,8 +1659,11 @@ export class Game {
       ctx.fillStyle = `rgba(255,255,180,${this.parryFlash * 0.6})`;
       ctx.fillRect(0, 0, W, H);
     }
-    if (this.puForesight > 0) {
-      ctx.strokeStyle = "rgba(167,139,250,0.7)"; ctx.lineWidth = 1;
+    if (this.puChrono > 0) {
+      // Purple time-warp tint
+      ctx.fillStyle = "rgba(167,139,250,0.10)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(167,139,250,0.55)"; ctx.lineWidth = 1;
       for (const e of this.enemies) {
         if (e.dying) continue;
         const sx = e.x - this.camX - e.w/2;
