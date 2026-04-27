@@ -1148,10 +1148,12 @@ export class Game {
   private spawnPlatformAt(x: number) {
     if (Math.random() < 0.5) return;
     const meters = this.worldX / PX_PER_METER;
-    const kind = pickPlatformKind(meters);
+    let kind = pickPlatformKind(meters);
+    // Ladders aren't standalone platforms — they get attached to a base.
+    if (kind === "ladder") kind = "stone";
     const w = randi(80, 180);
     const y = randi(280, 400);
-    this.platforms.push({
+    const base: Platform = {
       x, y, w, h: 16,
       kind,
       cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
@@ -1159,7 +1161,29 @@ export class Game {
       horizontal: Math.random() < 0.5,
       conveyorDir: Math.random() < 0.5 ? 1 : -1,
       cloudFade: 1, cloudActive: true, cloudRespawn: 0,
-    });
+    };
+    this.platforms.push(base);
+
+    // ~30% chance: attach a climbable ladder to one side of the base platform
+    // running from the platform top down to the ground.
+    if (kind === "stone" || kind === "floating" || kind === "crumble" || kind === "ice" || kind === "moving") {
+      if (Math.random() < 0.3 && y < GROUND_Y - 40) {
+        const onLeft = Math.random() < 0.5;
+        const lw = 12;
+        const lx = onLeft ? base.x - lw : base.x + base.w;
+        const ly = base.y;
+        const lh = GROUND_Y - ly;
+        this.platforms.push({
+          x: lx, y: ly, w: lw, h: lh,
+          kind: "ladder",
+          cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
+          baseX: lx, baseY: ly, phase: 0,
+          horizontal: false,
+          conveyorDir: 1,
+          cloudFade: 1, cloudActive: true, cloudRespawn: 0,
+        });
+      }
+    }
   }
 
   private updatePlatforms(dt: number) {
