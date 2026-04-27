@@ -213,6 +213,25 @@ export class Game {
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
+  // === Animation
+  private animTime = 0;
+  private meleeSwing = 0; // 0..1 visual swing
+  // === Weather
+  private weather: "clear" | "rain" | "snow" | "storm" = "clear";
+  private weatherSwitch = 8;
+  private rainDrops: { x:number; y:number; vy:number }[] = [];
+  private lightningFlash = 0;
+  private nextLightning = 6;
+  // === Power-ups (active timers, 5s each)
+  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puForesight = 0;
+  // === World pickups on ground (coins/tokens/crystals/powerups) — different list separate from drops
+  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_for"; value:number }[] = [];
+  private worldPickupNextX = 600;
+  // === Landmarks (safezones)
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private inSafeZone = false;
+  // Overdrive previous max HP cache
+  private odPrevMaxHp = 123;
 
   private last = 0; private rafId = 0;
 
