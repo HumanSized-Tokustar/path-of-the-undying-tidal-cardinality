@@ -781,11 +781,18 @@ export class Game {
     this.updateEnemies(dt);
 
     this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
+    if (this.spawnTimer <= 0 && this.enemiesSpawned < 100) {
       this.spawnEnemy();
-      const ramp = clamp(1 - meters / 3000, 0.2, 1);
-      this.spawnTimer = rand(1.4, 2.6) * ramp;
-      if (this.difficulty === "son") this.spawnEnemy();
+      this.enemiesSpawned++;
+      // Rate ramps: start ~0.4 enemies/sec, +2/sec per 111m traveled
+      const rate = 0.4 + 2 * Math.floor(meters / 111);
+      const interval = 1 / Math.max(0.2, rate);
+      // small jitter so spawns don't feel mechanical
+      this.spawnTimer = interval * rand(0.85, 1.15);
+      if (this.difficulty === "son" && this.enemiesSpawned < 100) {
+        this.spawnEnemy();
+        this.enemiesSpawned++;
+      }
     }
 
     while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
