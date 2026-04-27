@@ -220,6 +220,7 @@ export class Game {
   private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
   private spawnTimer = 0;
+  private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
   private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
