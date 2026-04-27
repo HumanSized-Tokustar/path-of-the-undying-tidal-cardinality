@@ -1,82 +1,144 @@
-# Wave 3 — Fix Pack: Roster, Variants, Inventory, Pause, HUD Redesign
+# Wave 4 — Class Split, Smarter AI, Day/Night, Parry & Grab, Humanoid Redesign
 
-You're right — too much was missing. This plan tackles everything you called out in one focused wave, prioritizing the gaps before adding more bosses.
+A focused single-wave rebuild that hits every issue in your message. Built lean to save credits — no extra polish passes you didn't ask for.
 
-## What's broken / missing right now
+## 1. Weapon class system (the big one)
 
-- No pause (P)
-- No inventory screen (Y) — flag exists in input but no UI opens
-- No weapon switching — only Pistol/Knife/Grenade as separate buttons, no hotbar/cycling
-- Base roster missing — only 3 weapons exist, the full starting kit isn't there
-- Only 3 enemy types (shooter, shanker, brute), no variants (no Riders, no Bomber Planes, no elite/armored variants)
-- Only 1 platform style (flat brown) — no variants (floating, crumbling, ice, spike, moving)
-- HUD doesn't match the reference video (colors, fonts, layout, bottom description bar)
+Split inventory into **3 independent classes** so nothing competes for slots:
 
-## What this wave delivers
+- **RANGED — 6 slots**, hotkeys `1` `2` `3` `4` `5` `6`, fired with `J`
+- **MELEE — 1 slot**, fired with `L` (Knife is the default; future melee weapons drop in here)
+- **MISC — 2 slots**, slot A fires with `K`, slot B fires with `O` (Grenade defaults to slot A)
 
-### 1. Pause system (P)
-- `P` toggles a full pause overlay. Game loop freezes (no physics, no spawns, no audio progression).
-- Overlay shows: "PAUSED", controls cheatsheet, Resume / Restart / Main Menu buttons.
+Engine changes:
+- `InventoryState` becomes `{ owned, ranged: WeaponId[6], melee: WeaponId, miscA: WeaponId, miscB: WeaponId, activeRanged: 0..5 }`.
+- Number keys 1–6 select active ranged slot. `J` fires it. Mouse wheel cycles ranged only.
+- `K` fires `miscA`, `O` fires `miscB`. `L` swings `melee`.
+- `WEAPONS` table gains `class: "ranged" | "melee" | "misc"` and a `deploy: boolean` flag (turrets/medkits etc. don't get charged throws).
+- All HUD wording: "throw misc" instead of "throw grenade".
 
-### 2. Inventory screen (Y)
-- `Y` opens a grid-based inventory overlay (paused while open).
-- Tabs: **Weapons** (owned + equipped slots), **Consumables** (grenades, medkits, ammo packs), **Augments** (passive upgrades), **Stats** (HP, dmg mult, speed, crit).
-- Click weapon → equip into slot 1 / 2 / 3.
+Inventory overlay (matches your annotated screenshot):
+- Top row: 3 tabs become **WEAPONS** only (CONSUMABLES tab removed — misc weapons live in the box grid). STATS stays.
+- Equipped panel shows **6 ranged slots [1]–[6]**, then **1 melee slot [L]**, then **2 misc slots [K] [O]**.
+- Owned grid below — click a weapon, then click a target slot of matching class to equip. Cross-class equip is blocked with a tiny toast.
 
-### 3. Weapon switching + base roster
-- Hotbar with 3 active slots, shown bottom-center of HUD with icons + ammo counts.
-- `1` `2` `3` switch active weapon. Mouse wheel also cycles. `J` = fire active weapon, `K` = grenade (always), `L` = melee (always knife or upgraded melee).
-- **Base roster (starting unlocked):** Pistol, Knife, Grenade, SMG, Shotgun, Rifle. All available from spawn so you can test switching immediately.
-- Each weapon has: damage, fire rate, spread, ammo, reserve, projectile speed, sprite color.
+## 2. Charged misc throws
 
-### 4. Enemy variants (expanded roster)
-Adding to existing shooter/shanker/brute:
-- **Shooter Elite** — armored, 2x HP, burst-fires 3 rounds
-- **Shanker Swift** — faster, lower HP, leaps
-- **Brute Heavy** — slow, huge HP, ground-pound shockwave
-- **Rider** — rides a hover-bike, fast horizontal pass, drops bombs
-- **Bomber Plane** — flies overhead, drops gravity bombs in arc
-- **Sniper** — stationary on tall platforms, charges a red laser line before firing
+- Holding `K` or `O` builds a 0–1.0 charge meter (capped at 1.2s).
+- On release, throw velocity = `base * (0.6 + charge * 1.4)` — short tap = lob, full hold = long throw.
+- Tiny charge ring renders above player while held.
+- If `WEAPONS[id].deploy === true` (medkit, turret, shield drop), pressing the key just deploys instantly — no charge.
 
-Spawn weights ramp by distance.
+## 3. Parry (`E`) + Grab/Throw (`F`)
 
-### 5. Platform variants
-- **Standard** (current brown)
-- **Floating stone** (gray, mid-air)
-- **Crumbling** (cracks then falls 0.5s after step)
-- **Ice** (slippery, low friction)
-- **Spike-top** (damages on contact — visual hazard)
-- **Moving** (oscillates horizontally or vertically)
+Parry:
+- Engine scans every frame for hostile bullets within 90px AND closing on player. If found and no parry-window already open, sets `parryWindow = 0.35s` and shows a `!` indicator above player head.
+- Pressing `E` during the window: deflects all bullets in 70px radius back at nearest enemy (2× damage, color flips to friendly yellow), plays Ultrakill parry sound, spawns spark particles, animates the same melee swing arc with a white flash.
+- Missed parry: window closes silently, `!` fades.
 
-Spawner picks variant by biome/distance with weighted randomness so terrain feels varied.
+Grab/Throw (`F`):
+- Press `F`: nearest non-boss enemy within 70px is grabbed — locked above player head, `disabled = true` so it can't shoot/melee.
+- Press `F` again: throws it as a projectile with arc physics. On landing it deals **80 AoE** in a 90px radius and dies with the glint death animation.
+- Bosses ignore grab attempts (small "RESISTED" floater).
 
-### 6. HUD redesign to match reference video
-Restyling to match the screen-replay reference (bottom description bar, retro arcade colors, chunkier bars):
-- **Top-left:** stacked HP / Shield / Overdrive bars with thick pixel borders, segmented fills, white labels with hard shadow
-- **Top-center:** distance + timer in large amber pixel font
-- **Top-right:** currencies (coins / tokens / crystals) with glyph icons
-- **Bottom-center:** **weapon hotbar** (3 slots, active slot glows amber, shows ammo)
-- **Bottom bar:** dark translucent strip running full width with **dynamic description text** (like the reference video) — context-sensitive: "MEGGER KNIGHT — slam attack, weak to fire", "SHOP AHEAD — 30m", "OVERDRIVE READY — press F", combo text, pickup names
-- Combo / damage popups float on right side as before but restyled
+Overdrive moves to `G` to free up `F`. Inventory key stays `Y`. Pause stays `P`. Description bar updates to reflect the rebind.
 
-### 7. Pygame zip refresh
-Update `path_of_the_undying_tidal_cardinality_pygame.zip` to mirror: pause, inventory stub, hotbar, new enemy types, new platform types. Same `# === EXTEND ME ===` markers.
+## 4. Smarter enemy AI + Difficulty setting
 
-## Technical notes
+AI improvements (all enemies):
+- **Jumping**: if a platform edge or player is above and within 120px, ground enemies attempt jump (cooldown 1.2s).
+- **Repositioning**: shooters strafe in/out of optimal range (180–320px) instead of locking distance.
+- **Separation**: existing separation force kept, but boosted so they don't stack.
+- **Variant behaviors**: Shanker leaps gaps, Brute hops to body-slam, Sniper repositions if line-of-sight is broken, Rider doesn't try to jump.
 
-- New `src/game/weapons.ts` — weapon definitions table + `fireWeapon(state, weapon)` function.
-- New `src/game/platforms.ts` — variant defs + `spawnPlatform(distance)` weighted picker.
-- Engine: enemy union type expanded; physics adds friction-per-platform, crumble timers, moving platform velocity carry, spike contact damage.
-- New components: `src/components/game/PauseOverlay.tsx`, `src/components/game/InventoryOverlay.tsx`, `src/components/game/Hotbar.tsx`, `src/components/game/DescriptionBar.tsx`.
-- `Phase` type adds `"paused"` and `"inventory"`. Engine stops stepping when phase ≠ `"playing"`.
-- HUD CSS: bump bar borders to 2px solid, add segmented fill via repeating-linear-gradient, switch label color to off-white #f4e9c1, add bottom description bar fixed at viewport bottom.
+Difficulty selector on Start screen (also accessible from Pause overlay → "DIFFICULTY"):
+- **DUNCE** — enemy HP ×0.7, dmg ×0.6, fire rate ×0.7, AI reaction +200ms.
+- **ALRIGHT** — baseline (current values).
+- **SON 😭** — HP ×1.5, dmg ×1.5, fire rate ×1.4, AI reaction −100ms, +1 spawn per wave.
 
-## Out of scope for this wave (next waves)
+Stored in `GameStats.difficulty`, applied as multipliers everywhere enemies take/deal damage or fire.
 
-- Remaining bosses 5–10 (have 0–4 stub right now; will do in Wave 4)
-- Full shop UIs (Augment shop, Ally shop)
-- Status effects (fire/freeze/slow/bleed/confuse)
-- Weather system
-- Ranking screen polish
+## 5. Day/Night cycle + weather
 
-Approve and I'll build it straight through.
+- Add `cycleTime` (seconds, mod 60) and `cycleProgress` (0..1) to engine.
+- Sky gradient interpolates between day palette (#6cb8ff → #c8d8ff) and night palette (#0c1230 → #2a2050) over each minute.
+- Sun/Moon icon rendered top-right of canvas (HUD-overlapping safe — drawn in canvas, behind HUD chips):
+  - **Sun** — yellow disc with 8 sword-shaped rays (elongated triangles), subtle white `∞` symbol etched in middle.
+  - **Moon** — pale disc with crescent shading, same `∞` etched in middle.
+- Existing weather variants kept (rain, snow, storm) — storm keeps lightning bolts but those bolts get **no** infinity symbol. Adds **fog** (visibility tint) and **windy** (slight horizontal bullet drift) variants.
+- Weather rolls every 45–90s independent of day/night.
+
+## 6. Jump-through platforms + new variants
+
+- All non-ground platforms become **jump-through** (player can jump up through them; only land when falling and feet cross top edge). Press `down + jump` to drop through.
+- Ground stays solid.
+- New variants added on top of existing stone/floating/crumble/ice/spike/moving:
+  - **bounce** — green pad, +60% jump impulse on contact
+  - **conveyor** — striped, pushes player horizontally (alternates direction by instance)
+  - **cloud** — semi-transparent, fades after 1s of standing on it, respawns after 3s
+- `pickPlatformKind` weights updated to include the 3 new kinds in mid/late game.
+
+## 7. Speed rework
+
+- Base run speed: **15 m/s** (was lower).
+- Every **400m**, base scrolling speed gains **+10 m/s**, capped at **105 m/s**.
+- Untouched-momentum bonus (existing) reduced to ±15% of current base so it doesn't blow past the cap.
+- Hit-too-much penalty (existing) kept at −20% but recovers in 8s.
+
+## 8. Dash buff
+
+- Distance ×1.5 (longer leap).
+- **i-frames** for the entire dash duration (`invuln` flag set true → all `damagePlayer` calls early-return).
+- Visual: cyan after-image trail (3 ghosts).
+
+## 9. Humanoid sprite redesign
+
+Replacing all square sprites with simple humanoid pixel rigs (head, body, 2 arms, 2 legs) drawn procedurally in canvas — same lightweight cost, much better look:
+
+- **Player**: yellow tunic, brown pants, **wide-brim hat with `∞` symbol stitched in white**, weapon held in active hand. Walking animation (legs alternate), idle bob, jump tuck, dash lean, parry/melee swing arc with motion lines.
+- **Allies**: same rig, blue tunic.
+- **Enemies**: per-type rigs —
+  - Shooter: red coat, pistol arm
+  - Shooter Elite: same + helmet
+  - Shanker: hooded purple, dagger
+  - Brute: bulky brown, no head visible (helmet)
+  - Rider: small body on bike base
+  - Sniper: kneeling pose, rifle
+  - Bomber: small pilot in plane outline
+- **Bosses (stub frames for now)**: each boss gets a unique silhouette — Megger Knight (giant armored humanoid w/ greatsword), Tide Cardinal (robed figure w/ floating halos). Bosses 3–10 get placeholder humanoid rigs with unique color/weapon and will gain unique attack frames in Wave 5.
+- **Death animation**: on enemy death, sprite freezes white for 1 frame then plays a **glint** — 4 expanding white star particles + thin cross-flash — then dissolves.
+
+## 10. New sounds
+
+`src/game/audio.ts` gets 3 new entries played from the right events:
+- `purchase` → Apple Pay sound (on shop buy)
+- `miscThrow` → Nintendo Switch click (on K/O release)
+- `parry` → Ultrakill parry sound (on successful `E` parry)
+
+Files copied from `user-uploads://` into `src/assets/audio/` and imported as ES6 modules.
+
+## 11. Python remake sync
+
+Update `path_of_the_undying_tidal_cardinality_pygame.zip`:
+- `main.py` mirrors all of the above: 3-class loadout, `K`/`O`/`L` bindings, charged throws, parry/grab on `E`/`F`, day/night cycle (60s), sun/moon with `∞`, jump-through platforms + new variants, difficulty selector at boot, humanoid sprite draw functions, glint death.
+- `assets.md` updated with: humanoid sprite spec sheet (player hat with `∞`, sun/moon with `∞`, enemy color refs), new sound filenames.
+- `GUIDE.md` controls section rewritten + difficulty section added.
+
+## Out of scope (next waves)
+
+- Full unique boss attack patterns for bosses 3–10 (stub humanoid rigs only this wave)
+- Functional shop purchase UIs
+- Augment shop / status effects
+
+## Technical notes (for the code review)
+
+- New file `src/game/parryGrab.ts` for parry-window + grab-state helpers.
+- `src/game/weapons.ts` extended with `class` and `deploy` fields, plus 2–3 starter misc weapons (Grenade, Smoke, Medkit).
+- `src/game/platforms.ts` extended with `bounce`/`conveyor`/`cloud` and a `passThrough` flag on every non-ground variant.
+- `src/components/game/InventoryOverlay.tsx` rebuilt to the 6+1+2 layout from your screenshot.
+- `src/components/game/Hud.tsx` hotbar splits into 3 row groups: ranged (6), melee (1), misc (2). Description bar wording updated.
+- `src/components/game/StartScreen.tsx` gains difficulty toggle.
+- Engine input map updated: `E` parry, `F` grab/throw, `G` overdrive, `1–6` ranged, `K`/`O` misc, `L` melee, `J` ranged fire, `Y` inventory, `P` pause, `I` shield.
+- All damage/fire-rate paths multiply by `state.difficultyMods`.
+
+Approve and I'll build it in one pass.
