@@ -16,9 +16,42 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
         {view === "main" && (
           <>
             <div className="text-[10px] text-foreground/60 mb-2">Endless Pixel Platform Shooter</div>
-            <h1 className="text-[hsl(var(--primary))] text-[18px] leading-snug mb-1">PATH OF THE</h1>
-            <h1 className="text-[hsl(var(--accent))] text-[20px] leading-snug mb-1">UNDYING TIDAL</h1>
-            <h1 className="text-[hsl(var(--secondary))] text-[18px] leading-snug mb-6">CARDINALITY</h1>
+            <div className="relative mb-6">
+              {/* Infinity symbol behind title */}
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox="-110 -50 220 100"
+                preserveAspectRatio="xMidYMid meet"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="infGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.55" />
+                    <stop offset="50%" stopColor="hsl(var(--accent))" stopOpacity="0.7" />
+                    <stop offset="100%" stopColor="hsl(var(--secondary))" stopOpacity="0.55" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M -90,0 C -90,-50 -30,-50 0,0 C 30,50 90,50 90,0 C 90,-50 30,-50 0,0 C -30,50 -90,50 -90,0 Z"
+                  fill="none"
+                  stroke="url(#infGrad)"
+                  strokeWidth="3"
+                  className="opacity-80 animate-pulse"
+                />
+                <path
+                  d="M -90,0 C -90,-50 -30,-50 0,0 C 30,50 90,50 90,0 C 90,-50 30,-50 0,0 C -30,50 -90,50 -90,0 Z"
+                  fill="none"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="1"
+                  strokeOpacity="0.35"
+                />
+              </svg>
+              <div className="relative z-10">
+                <h1 className="text-[hsl(var(--primary))] text-[18px] leading-snug mb-1" style={{ textShadow: "2px 2px 0 #0a0e1f" }}>PATH OF THE</h1>
+                <h1 className="text-[hsl(var(--accent))] text-[20px] leading-snug mb-1" style={{ textShadow: "2px 2px 0 #0a0e1f" }}>UNDYING TIDAL</h1>
+                <h1 className="text-[hsl(var(--secondary))] text-[18px] leading-snug" style={{ textShadow: "2px 2px 0 #0a0e1f" }}>CARDINALITY</h1>
+              </div>
+            </div>
             <div className="space-y-2.5">
               <Btn onClick={onStart} primary>▶ START GAME</Btn>
               <Btn onClick={() => setView("settings")}>⚙ SETTINGS</Btn>
