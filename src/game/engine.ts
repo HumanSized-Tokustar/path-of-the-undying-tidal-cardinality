@@ -330,6 +330,11 @@ export class Game {
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
+    this.animTime = 0; this.meleeSwing = 0;
+    this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
+    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puForesight = 0;
+    this.worldPickups = []; this.worldPickupNextX = 600;
+    this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.inventory = {
       owned: [...STARTING_OWNED],
       loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
