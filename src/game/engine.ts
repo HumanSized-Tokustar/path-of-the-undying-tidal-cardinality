@@ -2092,6 +2092,17 @@ export class Game {
       ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
     }
+    // Slow-fall (antigrav) aura — cyan feathers
+    if (this.slowFall > 0) {
+      ctx.strokeStyle = "rgba(155,232,255,0.7)"; ctx.lineWidth = 1;
+      const r = 18 + Math.sin(this.animTime * 8) * 2;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, r, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 3; i++) {
+        const yy = psy + this.ph + ((this.animTime * 30 + i * 8) % 18);
+        ctx.fillStyle = "rgba(155,232,255,0.7)";
+        ctx.fillRect(psx + 4 + i * 6, yy, 2, 4);
+      }
+    }
     if (this.odActive) {
       ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
       ctx.strokeRect(psx - 3, psy - 3, this.pw + 6, this.ph + 6);
