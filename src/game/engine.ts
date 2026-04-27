@@ -1083,17 +1083,22 @@ export class Game {
   }
 
   // === Grab/Throw
-  private handleGrabThrow() {
+  private handleGrabThrow(charge: number = 0) {
     if (this.grabbed) {
       // Throw it
       const e = this.grabbed;
       e.grabbed = false;
       e.disabled = 0;
       e.thrown = true;
-      e.throwVx = this.pFacing * 600;
-      e.throwVy = -380;
+      const vBase = 520;
+      const vBoost = 700 * charge; // up to ~1220 px/s when fully charged
+      e.throwVx = this.pFacing * (vBase + vBoost);
+      e.throwVy = -360 - 220 * charge;
+      // Stash bonus damage for landing explosion (read in updateEnemies)
+      (e as any).throwDmg = 60 + Math.round(140 * charge);
+      (e as any).throwRadius = 80 + Math.round(60 * charge);
       this.grabbed = null;
-      this.flashDescription("THROW ENEMY");
+      this.flashDescription(`THROW ENEMY — ${Math.round(charge * 100)}% charge`);
       audio.play("miscthrow");
     } else {
       // Find nearest non-boss enemy in range
