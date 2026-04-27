@@ -646,11 +646,16 @@ class Game:
 
         # Spawn enemies
         self.spawn_timer -= dt
-        if self.spawn_timer <= 0:
+        if self.spawn_timer <= 0 and self.enemies_spawned < 100:
             self.spawn_enemy()
-            ramp = clamp(1 - meters/3000, 0.2, 1)
-            self.spawn_timer = random.uniform(1.4, 2.6) * ramp
-            if self.difficulty == "son": self.spawn_enemy()
+            self.enemies_spawned += 1
+            # Start slow, +2 enemies/sec per 111 m, hard cap at 100 total spawns
+            rate = 0.4 + 2 * (int(meters) // 111)
+            interval = 1.0 / max(0.2, rate)
+            self.spawn_timer = interval * random.uniform(0.85, 1.15)
+            if self.difficulty == "son" and self.enemies_spawned < 100:
+                self.spawn_enemy()
+                self.enemies_spawned += 1
 
         # Maintain platforms
         while not self.platforms or self.last_platform_x() < self.cam_x + W + 600:
