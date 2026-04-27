@@ -20,8 +20,10 @@ const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
 const COLOR = {
   ground: "#3b2a1a",
   groundTop: "#5a8a3a",
-  player: "#f6c453",
-  playerOut: "#3a2a10",
+  player: "#4ec866",          // green tunic
+  playerOut: "#1f4a26",       // dark green outline
+  playerBuckle: "#ffd84a",    // yellow belt buckle
+  playerPants: "#1a3a22",     // dark green pants
   bullet: "#fff199",
   bulletEnemy: "#ff6a6a",
   hpBar: "#e84545",
