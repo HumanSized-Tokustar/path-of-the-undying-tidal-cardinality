@@ -659,14 +659,100 @@ export class Game {
     }
     this.platforms = this.platforms.filter(p => p.x + p.w > this.camX - 200 && p.y < H + 200);
 
+    // === World ground pickups (coins/tokens/crystals/powerups along the road)
+    while (this.worldPickupNextX < this.camX + W + 400) {
+      const x = this.worldPickupNextX;
+      const r = Math.random();
+      let type: any = "coin", value = randi(1, 30);
+      if (r < 0.05) { // 5% power-up
+        const pr = Math.random();
+        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_for";
+        value = 5; // seconds
+      } else if (r < 0.10) { type = "crystal"; value = randi(1, 3); }
+      else if (r < 0.20) { type = "token"; value = randi(1, 2); }
+      else { type = "coin"; value = randi(1, 30); }
+      this.worldPickups.push({ x, y: GROUND_Y - 14, type, value });
+      this.worldPickupNextX += randi(140, 320);
+    }
+    // Pick up world items on touch
+    this.worldPickups = this.worldPickups.filter(p => {
+      if (p.x < this.camX - 200) return false;
+      const dx = (this.px + this.pw/2) - p.x;
+      const dy = (this.py + this.ph/2) - p.y;
+      if (Math.abs(dx) < 24 && Math.abs(dy) < 28) {
+        if (p.type === "coin") { this.coins += p.value; }
+        else if (p.type === "token") { this.tokens += p.value; }
+        else if (p.type === "crystal") { this.crystals += p.value; }
+        else if (p.type === "pu_dmg") { this.puDamage = 5; this.flashDescription("POWER-UP — 2× DAMAGE (5s)"); }
+        else if (p.type === "pu_spd") { this.puSpeed = 5; this.flashDescription("POWER-UP — 2× SPEED (5s)"); }
+        else if (p.type === "pu_inv") { this.puInvincible = 5; this.flashDescription("POWER-UP — INVINCIBLE (5s)"); }
+        else if (p.type === "pu_for") { this.puForesight = 5; this.flashDescription("POWER-UP — FORESIGHT (5s)"); }
+        return false;
+      }
+      return true;
+    });
+
+    // === Landmarks (safezones)
+    const meters = Math.floor(this.worldX / PX_PER_METER);
+    // Spawn next landmark roughly every 1000m (main+ally), 7777m (shady) — predicted positions
+    if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
+      const baseM = meters + 200;
+      const nextMain = Math.ceil(baseM / 1000) * 1000;
+      const lx = nextMain * PX_PER_METER;
+      if (!this.landmarks.find(l => Math.abs(l.x - lx) < 200)) {
+        this.landmarks.push({ x: lx, kind: "main", w: 220 });
+        this.landmarks.push({ x: lx + 260, kind: "ally", w: 200 });
+        if (nextMain % 7777 < 1000) this.landmarks.push({ x: lx + 520, kind: "shady", w: 180 });
+      }
+    }
+    this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
+    // Determine if player is inside a safezone
+    this.inSafeZone = this.landmarks.some(l =>
+      this.px + this.pw > l.x && this.px < l.x + l.w);
+
+    // === Weather
+    this.weatherSwitch -= dt;
+    if (this.weatherSwitch <= 0) {
+      const opts: any[] = ["clear","clear","rain","snow","storm"];
+      this.weather = opts[Math.floor(Math.random() * opts.length)];
+      this.weatherSwitch = rand(20, 45);
+      this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
+    }
+    // Rain particle init
+    if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
+      for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
+    }
+    if (this.weather !== "rain" && this.weather !== "storm") this.rainDrops = [];
+    for (const d of this.rainDrops) {
+      d.y += d.vy * dt; d.x -= 60 * dt;
+      if (d.y > H) { d.y = -10; d.x = rand(0, W); }
+    }
+    if (this.lightningFlash > 0) this.lightningFlash -= dt * 4;
+    if (this.weather === "storm") {
+      this.nextLightning -= dt;
+      if (this.nextLightning <= 0) {
+        this.nextLightning = rand(4, 9);
+        this.lightningFlash = 1;
+        this.screenShake = Math.max(this.screenShake, 6);
+        // Strike a random visible enemy or near player
+        if (this.enemies.length && Math.random() < 0.7) {
+          const t = pick(this.enemies);
+          this.damageEnemy(t, 80);
+        } else if (!this.inSafeZone && Math.random() < 0.3) {
+          this.damagePlayer(20);
+        }
+      }
+    }
+
     this.warnTimer -= dt;
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
-      const meters = Math.floor(this.worldX / PX_PER_METER);
-      const toShop = 1000 - (meters % 1000);
-      const toBoss = 5555 - (meters % 5555);
+      const m = Math.floor(this.worldX / PX_PER_METER);
+      const toShop = 1000 - (m % 1000);
+      const toBoss = 5555 - (m % 5555);
       if (toBoss < 80) this.warning = `BOSS APPROACHING — ${toBoss}m`;
       else if (toShop < 60) this.warning = `Main shop — ${toShop}m`;
+      else if (this.inSafeZone) this.warning = `SAFEZONE — protected`;
       else this.warning = null;
     }
 
