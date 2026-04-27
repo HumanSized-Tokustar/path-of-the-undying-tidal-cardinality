@@ -890,8 +890,26 @@ export class Game {
       (this as any)[cdRef] = w.fireCd;
       if (w.id === "medkit") this.useMedkit(); // direct heal
       else if (w.id === "smoke") {
-        // deploy smoke at feet
-        for (let i = 0; i < 30; i++) this.particles.push({ x: this.px + this.pw/2, y: this.py + this.ph, vx: rand(-30,30), vy: rand(-60,-10), life: 2, max: 2, color: "#cfcfcf", size: 4, gravity: -10 });
+        // FLASHBANG: bright flash + stun all enemies in large radius
+        const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+        this.parryFlash = Math.max(this.parryFlash, 0.4);
+        this.screenShake = Math.max(this.screenShake, 6);
+        for (const e of this.enemies) {
+          if (e.dying || e.thrown) continue;
+          const d = Math.hypot(e.x - cx, e.y - cy);
+          if (d < 360) {
+            // Bosses get reduced stun
+            const isBoss = (e as any).boss === true || e.maxHp > 400;
+            e.disabled = Math.max(e.disabled, isBoss ? 0.8 : 2.5);
+            e.fireCd = Math.max(e.fireCd, isBoss ? 0.6 : 2.0);
+          }
+        }
+        // Particle burst
+        for (let i = 0; i < 40; i++) this.particles.push({
+          x: cx, y: cy, vx: rand(-300,300), vy: rand(-260,-20),
+          life: 0.8, max: 0.8, color: i%2 ? "#fff8c2" : "#ffffff", size: 4,
+        });
+        this.flashDescription("FLASHBANG — enemies stunned");
       }
       audio.play("miscthrow");
       return;
