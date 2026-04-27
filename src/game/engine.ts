@@ -1268,7 +1268,7 @@ export class Game {
       thrown: false, throwVx: 0, throwVy: 0,
       legPhase: 0, glintTimer: 0, dying: false,
     });
-    if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < 100) {
+    if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
       this.enemiesSpawned++;
     }
