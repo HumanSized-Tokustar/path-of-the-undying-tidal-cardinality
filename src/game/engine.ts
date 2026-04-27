@@ -235,8 +235,8 @@ export class Game {
 
   private cycleTime = 0; // 0..DAY_NIGHT_PERIOD
 
-  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puForesight = 0;
-  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_for"; value:number }[] = [];
+  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
+  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
   private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
   private inSafeZone = false;
