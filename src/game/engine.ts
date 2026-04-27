@@ -1384,6 +1384,8 @@ export class Game {
     if (this.inSafeZone) return;
     if (this.puInvincible > 0) return;
     if (this.pInv > 0) return;
+    // Parry negates incoming damage entirely (incl. melee)
+    if (this.parryFlash > 0) return;
     let actual = dmg;
     if (this.shieldActive) actual *= 0.05;
     this.pHp -= actual;
