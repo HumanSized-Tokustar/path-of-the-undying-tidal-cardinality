@@ -927,17 +927,25 @@ export class Game {
   // === Parry
   private updateParry(dt: number) {
     if (this.parryWindow > 0) { this.parryWindow -= dt; if (this.parryWindow <= 0) this.parryWindow = 0; return; }
-    // Scan for incoming threats
+    const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+    // Scan for incoming projectiles
     for (const b of this.bullets) {
       if (b.friendly) continue;
-      const dx = b.x - (this.px + this.pw/2);
-      const dy = b.y - (this.py + this.ph/2);
+      const dx = b.x - cx, dy = b.y - cy;
       const d = Math.hypot(dx, dy);
       if (d < 90) {
-        // is closing?
         const closing = (b.vx * -dx + b.vy * -dy) > 0;
         if (closing) { this.parryWindow = 0.35; return; }
       }
+    }
+    // Scan for nearby melee threats (close enemies that touch-damage)
+    for (const e of this.enemies) {
+      if (e.dying || e.disabled > 0 || e.thrown) continue;
+      const isMelee = e.type === "shanker" || e.type === "shankerSwift" || e.type === "rider" ||
+                      e.type === "brute" || e.type === "bruteHeavy";
+      if (!isMelee) continue;
+      const dx = e.x - cx, dy = e.y - cy;
+      if (Math.hypot(dx, dy) < 70) { this.parryWindow = 0.35; return; }
     }
   }
   private tryParry() {
@@ -957,6 +965,18 @@ export class Game {
           b.vx = (dx/d) * sp; b.vy = (dy/d) * sp;
         } else { b.vx = -b.vx; b.vy = -b.vy; }
         b.color = "#ffd84a";
+        hit++;
+      }
+    }
+    // Stun & knock back melee enemies in front of the player
+    for (const e of this.enemies) {
+      if (e.dying || e.thrown) continue;
+      const dx = e.x - cx, dy = e.y - cy;
+      if (Math.hypot(dx, dy) < 80) {
+        e.disabled = Math.max(e.disabled, 1.2);
+        e.vx = Math.sign(dx || 1) * 320;
+        e.vy = -260;
+        e.hp -= 15;
         hit++;
       }
     }
