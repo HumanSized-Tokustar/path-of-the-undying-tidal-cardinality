@@ -220,6 +220,7 @@ export class Game {
   private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
   private spawnTimer = 0;
+  private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
   private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
@@ -396,7 +397,8 @@ export class Game {
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
-    this.timeAlive = 0; this.spawnTimer = 1.5;
+    this.timeAlive = 0; this.spawnTimer = 3.5;
+    this.enemiesSpawned = 0;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
@@ -779,11 +781,18 @@ export class Game {
     this.updateEnemies(dt);
 
     this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
+    if (this.spawnTimer <= 0 && this.enemiesSpawned < 100) {
       this.spawnEnemy();
-      const ramp = clamp(1 - meters / 3000, 0.2, 1);
-      this.spawnTimer = rand(1.4, 2.6) * ramp;
-      if (this.difficulty === "son") this.spawnEnemy();
+      this.enemiesSpawned++;
+      // Rate ramps: start ~0.4 enemies/sec, +2/sec per 111m traveled
+      const rate = 0.4 + 2 * Math.floor(meters / 111);
+      const interval = 1 / Math.max(0.2, rate);
+      // small jitter so spawns don't feel mechanical
+      this.spawnTimer = interval * rand(0.85, 1.15);
+      if (this.difficulty === "son" && this.enemiesSpawned < 100) {
+        this.spawnEnemy();
+        this.enemiesSpawned++;
+      }
     }
 
     while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
@@ -1185,7 +1194,10 @@ export class Game {
       thrown: false, throwVx: 0, throwVy: 0,
       legPhase: 0, glintTimer: 0, dying: false,
     });
-    if (meters > 500 && Math.random() < 0.3) this.spawnEnemy();
+    if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < 100) {
+      this.spawnEnemy();
+      this.enemiesSpawned++;
+    }
   }
 
   private updateEnemies(dtRaw: number) {

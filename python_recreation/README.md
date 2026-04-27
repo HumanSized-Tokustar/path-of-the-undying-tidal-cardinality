@@ -31,6 +31,7 @@ python python_recreation/game.py
 - Unified MISC ammo pool (5 per equipped misc slot × 2 slots = 10 starter, ×2 on DUNCE)
 - 3-life respawn system
 - Distance-based pace: base 15 m/s, +10 m/s every 300 m, capped at 105 m/s
+- Enemy spawn rate: starts slow (~0.4/s), +2/s every 111 m, hard cap at 100 total spawns per run
 - LEVEL OF ENEMY THREAT: DUNCE / ALRIGHT / SON 😭
     - DUNCE: enemies 0.5× HP, 0.4× dmg, 0.55× speed, 1.7× fire cd; player gets 2× starter HP/ammo/misc/coins
     - SON: enemies 1.6× HP, 2× dmg, 1.15× speed, 0.55× fire cd, smarter
