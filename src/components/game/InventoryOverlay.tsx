@@ -14,8 +14,8 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
     target.kind === "ranged" ? "ranged" : target.kind === "melee" ? "melee" : "misc";
   const targetLabel =
     target.kind === "ranged" ? `RANGED [${target.index + 1}]` :
-    target.kind === "melee"  ? "MELEE [L]" :
-    target.kind === "miscA"  ? "MISC [K]" : "MISC [O]";
+    target.kind === "melee"  ? "MELEE [R]" :
+    target.kind === "miscA"  ? "MISC [Q]" : "MISC [E]";
 
   const equip = (wid: WeaponId) => {
     const w = WEAPONS[wid];
@@ -60,7 +60,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
             <div className="text-[#fff7d6] text-[9px] mb-2">EQUIPPED — click a slot to target, then click an owned weapon of matching class.</div>
 
             {/* RANGED row */}
-            <div className="text-[8px] text-[#ffd166] mb-1">RANGED [1-6] · FIRE J</div>
+            <div className="text-[8px] text-[#ffd166] mb-1">RANGED [1-6] · FIRE F</div>
             <div className="flex gap-2 mb-3 flex-wrap">
               {inv.ranged.map((wid, i) => (
                 <SlotBtn key={i} wid={wid} label={`[${i+1}]`} accent="#ffd166"
@@ -70,7 +70,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
             </div>
 
             {/* MELEE row */}
-            <div className="text-[8px] text-[#d8e2ff] mb-1">MELEE [L]</div>
+            <div className="text-[8px] text-[#d8e2ff] mb-1">MELEE [R]</div>
             <div className="flex gap-2 mb-3">
               <SlotBtn wid={inv.melee} label="[L]" accent="#d8e2ff"
                 active={target.kind === "melee"}
@@ -78,7 +78,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
             </div>
 
             {/* MISC row */}
-            <div className="text-[8px] text-[#ff8c42] mb-1">MISC [K] [O] · hold to charge throw</div>
+            <div className="text-[8px] text-[#ff8c42] mb-1">MISC [Q] [E] · hold to charge throw</div>
             <div className="flex gap-2 mb-4">
               <SlotBtn wid={inv.miscA} label="[K]" accent="#ff8c42"
                 active={target.kind === "miscA"}
