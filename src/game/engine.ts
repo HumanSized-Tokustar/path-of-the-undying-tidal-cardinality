@@ -292,7 +292,12 @@ export class Game {
     };
   }
 
-  setDifficulty(d: Difficulty) { this.difficulty = d; this.emitStats(); }
+  setDifficulty(d: Difficulty) {
+    // Locked once a run is in progress
+    if (this.phase === "playing" || this.phase === "paused" || this.phase === "inventory") return;
+    this.difficulty = d;
+    this.emitStats();
+  }
 
   // Multipliers (enemy stats)
   // SON: smarter (faster reactions/fire) and 2× damage
