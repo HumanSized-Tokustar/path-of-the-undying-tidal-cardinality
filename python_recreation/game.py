@@ -465,8 +465,8 @@ class Game:
         if self.pvx > 0: self.world_x += self.pvx * dt
         self.cam_x = max(0, self.px - W * 0.35)
 
-        # Shield
-        if pygame.K_i in pressed_set and self.shield_cd <= 0:
+        # Shield (X)
+        if pygame.K_x in pressed_set and self.shield_cd <= 0:
             self.shield_active = True; self.shield_time = 5; self.shield_cd = 6
         if self.shield_active:
             self.shield_time -= dt
