@@ -501,23 +501,39 @@ export class Game {
 
     if (this.input.overdrivePressed && this.odBar >= 1 && !this.odActive) {
       this.odActive = true; this.odTime = 6; this.odBar = 0;
-      this.flashDescription("OVERDRIVE — 2× damage, +15% speed");
+      // Double offensive stats AND double max HP + heal proportionally
+      this.odPrevMaxHp = this.pMaxHp;
+      this.pMaxHp = this.odPrevMaxHp * 2;
+      this.pHp = Math.min(this.pMaxHp, this.pHp + this.odPrevMaxHp);
+      this.flashDescription("OVERDRIVE — 2× DMG, 2× MAX HP, +SPEED (6s)");
     }
-    if (this.odActive) { this.odTime -= dt; if (this.odTime <= 0) this.odActive = false; }
+    if (this.odActive) {
+      this.odTime -= dt;
+      if (this.odTime <= 0) {
+        this.odActive = false;
+        this.pMaxHp = this.odPrevMaxHp;
+        this.pHp = Math.min(this.pHp, this.pMaxHp);
+      }
+    }
 
     if (this.fireCdR > 0) this.fireCdR -= dt;
     if (this.fireCdM > 0) this.fireCdM -= dt;
     if (this.fireCdMisc > 0) this.fireCdMisc -= dt;
     if (this.pInv > 0) this.pInv -= dt;
     if (this.descTimer > 0) this.descTimer -= dt;
+    if (this.meleeSwing > 0) this.meleeSwing = Math.max(0, this.meleeSwing - dt * 4);
+    if (this.puDamage > 0) this.puDamage -= dt;
+    if (this.puSpeed > 0) this.puSpeed -= dt;
+    if (this.puInvincible > 0) { this.puInvincible -= dt; this.pInv = Math.max(this.pInv, 0.1); }
+    if (this.puForesight > 0) this.puForesight -= dt;
 
-    // Fire active weapon (J)
+    // J = fire ACTIVE ranged weapon only (knife in slot still acts melee)
     if (this.input.fireR && this.fireCdR <= 0) {
       const w = WEAPONS[this.inventory.loadout[this.inventory.active]];
+      const dmgMult = (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       if (w.kind === "ranged" && this.ammo >= w.ammoPerShot) {
         this.fireCdR = w.fireCd;
         this.ammo -= w.ammoPerShot;
-        const dmgMult = this.odActive ? 2 : 1;
         for (let p = 0; p < w.pellets; p++) {
           const ang = (Math.random() - 0.5) * w.spread;
           const cs = Math.cos(ang), sn = Math.sin(ang);
@@ -531,20 +547,21 @@ export class Game {
         audio.play("fire");
         this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
       } else if (w.kind === "melee") {
-        // L-equivalent if knife is active
         this.fireCdR = w.fireCd;
-        const dmg = w.dmg * (this.odActive ? 2 : 1);
+        this.meleeSwing = 1;
+        const dmg = w.dmg * dmgMult;
         this.enemies.forEach(e => {
           if (Math.sign(e.x - this.px) === this.pFacing &&
-              Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
+              Math.abs(e.x - this.px) < 70 && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
         });
         audio.play("fire");
       }
     }
-    // Always-melee L
+    // Always-melee L (knife) — animated
     if (this.input.meleePressed && this.fireCdM <= 0) {
       this.fireCdM = WEAPONS.knife.fireCd;
-      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1);
+      this.meleeSwing = 1;
+      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
