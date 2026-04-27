@@ -1754,21 +1754,29 @@ export class Game {
     const lOff = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
     const rOff = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
 
-    // Legs
-    ctx.fillStyle = "#3a2a10";
+    // Legs (dark green pants)
+    ctx.fillStyle = COLOR.playerPants;
     ctx.fillRect(psx + 6, psy + this.ph - 8 + lOff, 5, 8);
     ctx.fillRect(psx + this.pw - 11, psy + this.ph - 8 + rOff, 5, 8);
     // Boots
-    ctx.fillStyle = "#1a0a05";
+    ctx.fillStyle = "#0d1f12";
     ctx.fillRect(psx + 5, psy + this.ph - 2 + lOff, 7, 2);
     ctx.fillRect(psx + this.pw - 12, psy + this.ph - 2 + rOff, 7, 2);
 
-    // Body (tunic)
+    // Body (green tunic)
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
     ctx.fillRect(psx + 4, psy + 14, this.pw - 8, this.ph - 22);
-    // Belt
+    // Tunic shading
     ctx.fillStyle = COLOR.playerOut;
+    ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+    // Belt (dark)
+    ctx.fillStyle = "#1a0a05";
     ctx.fillRect(psx + 4, psy + 24, this.pw - 8, 2);
+    // Yellow buckle (centered)
+    ctx.fillStyle = COLOR.playerBuckle;
+    ctx.fillRect(psx + this.pw/2 - 2, psy + 23, 4, 4);
+    ctx.fillStyle = "#a07020";
+    ctx.fillRect(psx + this.pw/2 - 1, psy + 24, 2, 2);
 
     // Head (skin)
     ctx.fillStyle = "#fde2a0";
