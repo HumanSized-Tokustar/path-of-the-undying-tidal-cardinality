@@ -1315,27 +1315,59 @@ export class Game {
       ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
     }
 
-    // Player
+    // Player (with walk anim + body parts)
     const psx = this.px - this.camX;
     ctx.fillStyle = COLOR.shadow;
     ctx.fillRect(psx + 3, this.py + 3, this.pw, this.ph);
     const flicker = this.pInv > 0 && Math.floor(this.pInv * 30) % 2 === 0;
+    // Legs (animated)
+    const legPhase = Math.sin(this.animTime * 12);
+    const legOffL = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
+    const legOffR = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
+    ctx.fillStyle = "#3a2a10";
+    ctx.fillRect(psx + 4, this.py + this.ph - 6 + legOffL, 6, 6);
+    ctx.fillRect(psx + this.pw - 10, this.py + this.ph - 6 + legOffR, 6, 6);
+    // Body
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
-    ctx.fillRect(psx, this.py, this.pw, this.ph);
+    ctx.fillRect(psx, this.py, this.pw, this.ph - 6);
+    // Head highlight
+    ctx.fillStyle = "#fde2a0";
+    ctx.fillRect(psx + 4, this.py + 2, this.pw - 8, 10);
     ctx.fillStyle = COLOR.playerOut;
     ctx.fillRect(psx, this.py, this.pw, 2);
-    ctx.fillRect(psx, this.py + this.ph - 2, this.pw, 2);
+    ctx.fillRect(psx, this.py + this.ph - 8, this.pw, 2);
+    // Eye
     ctx.fillStyle = "#000";
     const faceX = this.pFacing > 0 ? psx + this.pw - 9 : psx + 5;
-    ctx.fillRect(faceX, this.py + 12, 4, 4);
-    // gun (color reflects equipped)
-    const eqColor = WEAPONS[this.inventory.loadout[this.inventory.active]].color;
-    ctx.fillStyle = "#222";
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.45, 12, 4);
-    else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 12, 4);
-    ctx.fillStyle = eqColor;
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.45, 2, 2);
-    else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 2, 2);
+    ctx.fillRect(faceX, this.py + 6, 4, 4);
+    // Arm carrying weapon (color reflects equipped)
+    const activeW = WEAPONS[this.inventory.loadout[this.inventory.active]];
+    const eqColor = activeW.color;
+    if (activeW.kind === "melee") {
+      // Melee swing arc
+      const swing = this.meleeSwing;
+      const ang = (this.pFacing > 0 ? 1 : -1) * (1 - swing) * Math.PI * 0.6 - Math.PI/2;
+      const cx = psx + this.pw/2;
+      const cy = this.py + this.ph * 0.45;
+      const len = 22;
+      const ex = cx + Math.cos(ang) * len * (this.pFacing > 0 ? 1 : -1);
+      const ey = cy + Math.sin(ang) * len;
+      ctx.strokeStyle = eqColor; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      if (swing > 0.1) {
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
+        ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = "#222";
+      if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.4, 12, 4);
+      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 12, 4);
+      ctx.fillStyle = eqColor;
+      if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.4, 2, 2);
+      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 2, 2);
+    }
     if (this.shieldActive) {
       ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
@@ -1343,6 +1375,10 @@ export class Game {
     if (this.odActive) {
       ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
       ctx.strokeRect(psx - 3, this.py - 3, this.pw + 6, this.ph + 6);
+    }
+    if (this.puInvincible > 0) {
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 26 + Math.sin(this.animTime*10)*2, 0, Math.PI*2); ctx.stroke();
     }
 
     for (const p of this.particles) {
