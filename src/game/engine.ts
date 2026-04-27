@@ -744,16 +744,30 @@ export class Game {
       this.tryParry();
     }
 
-    // F = grab/throw
-    if (this.input.grabPressed) {
+    // V = grab (press) / throw (release with charge)
+    if (this.input.grabPressed && !this.grabbed) {
       this.input.grabPressed = false;
-      this.handleGrabThrow();
+      this.handleGrabThrow(0); // attempt grab
+    }
+    if (this.grabbed) {
+      if (this.input.grab) {
+        this.grabCharge = Math.min(1.5, this.grabCharge + dt);
+      }
+      if (this.input.grabReleased || this.input.grabPressed) {
+        const c = this.grabCharge / 1.5;
+        this.grabCharge = 0;
+        this.input.grabPressed = false;
+        this.handleGrabThrow(c);
+      }
+    } else {
+      this.grabCharge = 0;
     }
 
     this.input.jumpPressed = false; this.input.dashPressed = false;
     this.input.fireRPressed = false; this.input.miscAPressed = false; this.input.miscBPressed = false;
     this.input.miscAReleased = false; this.input.miscBReleased = false;
     this.input.meleePressed = false; this.input.shieldPressed = false;
+    this.input.grabReleased = false;
     this.input.overdrivePressed = false;
 
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
