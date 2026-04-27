@@ -1619,6 +1619,67 @@ export class Game {
       ctx.fillText(label, sx + 20, GROUND_Y - 96);
     }
 
+    // === START PORTAL (ominous orb with infinity sigil) at worldX = 0
+    {
+      const portalWorldX = 90;
+      const sx = portalWorldX - this.camX;
+      if (sx > -120 && sx < W + 120) {
+        const baseY = GROUND_Y - 4;
+        // Stone arch base
+        ctx.fillStyle = "#1a1426";
+        ctx.fillRect(sx - 50, baseY - 110, 100, 110);
+        ctx.fillStyle = "#2a1f3a";
+        ctx.fillRect(sx - 46, baseY - 106, 92, 102);
+        // Pillar runes
+        ctx.fillStyle = "#7b4adf";
+        for (let i = 0; i < 4; i++) ctx.fillRect(sx - 44, baseY - 100 + i * 22, 4, 12);
+        for (let i = 0; i < 4; i++) ctx.fillRect(sx + 40, baseY - 100 + i * 22, 4, 12);
+        // Inner dark arch
+        ctx.fillStyle = "#0a0612";
+        ctx.beginPath();
+        ctx.moveTo(sx - 32, baseY);
+        ctx.lineTo(sx - 32, baseY - 60);
+        ctx.quadraticCurveTo(sx, baseY - 100, sx + 32, baseY - 60);
+        ctx.lineTo(sx + 32, baseY);
+        ctx.closePath(); ctx.fill();
+        // Ominous orb
+        const orbY = baseY - 60;
+        const pulse = 0.5 + 0.5 * Math.sin(this.weatherTime * 2);
+        // Outer glow
+        ctx.globalAlpha = 0.25 + pulse * 0.25;
+        ctx.fillStyle = "#a87bff";
+        ctx.beginPath(); ctx.arc(sx, orbY, 30, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        // Orb core
+        const grad2 = ctx.createRadialGradient(sx - 4, orbY - 4, 2, sx, orbY, 22);
+        grad2.addColorStop(0, "#fff");
+        grad2.addColorStop(0.4, "#c9a8ff");
+        grad2.addColorStop(1, "#3a1a6a");
+        ctx.fillStyle = grad2;
+        ctx.beginPath(); ctx.arc(sx, orbY, 22, 0, Math.PI * 2); ctx.fill();
+        // Swirl marks
+        ctx.strokeStyle = "rgba(20,5,40,0.6)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(sx, orbY, 14, this.weatherTime, this.weatherTime + Math.PI * 1.4);
+        ctx.stroke();
+        // ∞ sigil floating ABOVE the orb
+        const sigY = orbY - 42;
+        // glow under sigil
+        ctx.globalAlpha = 0.35 + pulse * 0.3;
+        ctx.fillStyle = "#a87bff";
+        ctx.fillRect(sx - 18, sigY - 4, 36, 8);
+        ctx.globalAlpha = 1;
+        this.drawInfinity(ctx, sx, sigY, 14, "#fff");
+        this.drawInfinity(ctx, sx, sigY, 11, "#d8c4ff");
+        // Floating embers
+        for (let i = 0; i < 5; i++) {
+          const t = (this.weatherTime * 0.6 + i * 0.3) % 1;
+          ctx.fillStyle = `rgba(200,160,255,${1 - t})`;
+          ctx.fillRect(sx + Math.sin(i * 1.7 + this.weatherTime) * 22, orbY - t * 50, 2, 2);
+        }
+      }
+    }
+
     // World pickups
     for (const p of this.worldPickups) {
       const sx = p.x - this.camX;
