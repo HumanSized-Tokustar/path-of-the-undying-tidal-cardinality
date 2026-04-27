@@ -20,8 +20,10 @@ const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
 const COLOR = {
   ground: "#3b2a1a",
   groundTop: "#5a8a3a",
-  player: "#f6c453",
-  playerOut: "#3a2a10",
+  player: "#4ec866",          // green tunic
+  playerOut: "#1f4a26",       // dark green outline
+  playerBuckle: "#ffd84a",    // yellow belt buckle
+  playerPants: "#1a3a22",     // dark green pants
   bullet: "#fff199",
   bulletEnemy: "#ff6a6a",
   hpBar: "#e84545",
@@ -233,8 +235,8 @@ export class Game {
 
   private cycleTime = 0; // 0..DAY_NIGHT_PERIOD
 
-  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puForesight = 0;
-  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_for"; value:number }[] = [];
+  private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
+  private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
   private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
   private inSafeZone = false;
@@ -290,12 +292,19 @@ export class Game {
     };
   }
 
-  setDifficulty(d: Difficulty) { this.difficulty = d; this.emitStats(); }
+  setDifficulty(d: Difficulty) {
+    // Locked once a run is in progress
+    if (this.phase === "playing" || this.phase === "paused" || this.phase === "inventory") return;
+    this.difficulty = d;
+    this.emitStats();
+  }
 
   // Multipliers (enemy stats)
-  private diffEnemyHp() { return this.difficulty === "dunce" ? 0.7 : this.difficulty === "son" ? 1.5 : 1; }
-  private diffEnemyDmg() { return this.difficulty === "dunce" ? 0.6 : this.difficulty === "son" ? 1.5 : 1; }
-  private diffEnemyFire() { return this.difficulty === "dunce" ? 1.4 : this.difficulty === "son" ? 0.7 : 1; }
+  // SON: smarter (faster reactions/fire) and 2× damage
+  private diffEnemyHp()   { return this.difficulty === "dunce" ? 0.7 : this.difficulty === "son" ? 1.6 : 1; }
+  private diffEnemyDmg()  { return this.difficulty === "dunce" ? 0.6 : this.difficulty === "son" ? 2.0 : 1; }
+  private diffEnemyFire() { return this.difficulty === "dunce" ? 1.4 : this.difficulty === "son" ? 0.55 : 1; }
+  private diffSmart()     { return this.difficulty === "son" ? 1 : 0; } // 0..1 smartness boost
 
   private attachInput() {
     window.addEventListener("keydown", this.onKeyDown);
@@ -382,7 +391,7 @@ export class Game {
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
     this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
-    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puForesight = 0;
+    this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.miscACharge = 0; this.miscBCharge = 0;
@@ -632,7 +641,7 @@ export class Game {
     if (this.puDamage > 0) this.puDamage -= dt;
     if (this.puSpeed > 0) this.puSpeed -= dt;
     if (this.puInvincible > 0) { this.puInvincible -= dt; this.pInv = Math.max(this.pInv, 0.1); }
-    if (this.puForesight > 0) this.puForesight -= dt;
+    if (this.puChrono > 0) this.puChrono -= dt;
 
     // J = fire active ranged
     if (this.input.fireR && this.fireCdR <= 0) {
@@ -695,13 +704,15 @@ export class Game {
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
     if (this.dmgRecentTimer > 0) { this.dmgRecentTimer -= dt; if (this.dmgRecentTimer <= 0) this.dmgRecent = 0; }
 
-    // Bullets
+    // Bullets (enemy bullets are slowed by Chrono)
+    const enemySlowB = this.puChrono > 0 ? 0.5 : 1;
     this.bullets = this.bullets.filter(b => {
-      b.life -= dt;
+      const bdt = b.friendly ? dt : dt * enemySlowB;
+      b.life -= bdt;
       if (b.life <= 0) return false;
-      if (b.friendly && b.r >= 8) b.vy += 1500 * dt;
+      if (b.friendly && b.r >= 8) b.vy += 1500 * bdt;
       if (this.weather === "windy" && !b.friendly) b.vx *= 0.998;
-      b.x += b.vx * dt; b.y += b.vy * dt;
+      b.x += b.vx * bdt; b.y += b.vy * bdt;
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
       if (b.friendly) {
@@ -768,7 +779,7 @@ export class Game {
       let type: any = "coin", value = randi(1, 30);
       if (r < 0.10) {
         const pr = Math.random();
-        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_for";
+        type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_chr";
         value = 5;
       } else if (r < 0.18) { type = "crystal"; value = randi(1, 3); }
       else if (r < 0.32) { type = "token"; value = randi(1, 2); }
@@ -787,7 +798,7 @@ export class Game {
         else if (p.type === "pu_dmg") { this.puDamage = 5; this.flashDescription("POWER-UP — 2× DAMAGE (5s)"); }
         else if (p.type === "pu_spd") { this.puSpeed = 5; this.flashDescription("POWER-UP — 2× SPEED (5s)"); }
         else if (p.type === "pu_inv") { this.puInvincible = 5; this.flashDescription("POWER-UP — INVINCIBLE (5s)"); }
-        else if (p.type === "pu_for") { this.puForesight = 5; this.flashDescription("POWER-UP — FORESIGHT (5s)"); }
+        else if (p.type === "pu_chr") { this.puChrono = 5; this.flashDescription("POWER-UP — CHRONO SLOW (5s)"); }
         return false;
       }
       return true;
@@ -1109,7 +1120,10 @@ export class Game {
     if (meters > 500 && Math.random() < 0.3) this.spawnEnemy();
   }
 
-  private updateEnemies(dt: number) {
+  private updateEnemies(dtRaw: number) {
+    // CHRONO SLOW: enemies experience 50% time (bosses 75% — none yet, so flat 0.5)
+    const slow = this.puChrono > 0 ? 0.5 : 1;
+    const dt = dtRaw * slow;
     this.enemies = this.enemies.filter(e => {
       if (e.x < this.camX - 300) return false;
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
@@ -1504,7 +1518,7 @@ export class Game {
       else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
       else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
       else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
-      else if (p.type === "pu_for") { col = "#a78bfa"; label = "FOR"; }
+      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; }
       ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
       ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
       ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
@@ -1650,8 +1664,11 @@ export class Game {
       ctx.fillStyle = `rgba(255,255,180,${this.parryFlash * 0.6})`;
       ctx.fillRect(0, 0, W, H);
     }
-    if (this.puForesight > 0) {
-      ctx.strokeStyle = "rgba(167,139,250,0.7)"; ctx.lineWidth = 1;
+    if (this.puChrono > 0) {
+      // Purple time-warp tint
+      ctx.fillStyle = "rgba(167,139,250,0.10)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(167,139,250,0.55)"; ctx.lineWidth = 1;
       for (const e of this.enemies) {
         if (e.dying) continue;
         const sx = e.x - this.camX - e.w/2;
@@ -1737,21 +1754,29 @@ export class Game {
     const lOff = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
     const rOff = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
 
-    // Legs
-    ctx.fillStyle = "#3a2a10";
+    // Legs (dark green pants)
+    ctx.fillStyle = COLOR.playerPants;
     ctx.fillRect(psx + 6, psy + this.ph - 8 + lOff, 5, 8);
     ctx.fillRect(psx + this.pw - 11, psy + this.ph - 8 + rOff, 5, 8);
     // Boots
-    ctx.fillStyle = "#1a0a05";
+    ctx.fillStyle = "#0d1f12";
     ctx.fillRect(psx + 5, psy + this.ph - 2 + lOff, 7, 2);
     ctx.fillRect(psx + this.pw - 12, psy + this.ph - 2 + rOff, 7, 2);
 
-    // Body (tunic)
+    // Body (green tunic)
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
     ctx.fillRect(psx + 4, psy + 14, this.pw - 8, this.ph - 22);
-    // Belt
+    // Tunic shading
     ctx.fillStyle = COLOR.playerOut;
+    ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+    // Belt (dark)
+    ctx.fillStyle = "#1a0a05";
     ctx.fillRect(psx + 4, psy + 24, this.pw - 8, 2);
+    // Yellow buckle (centered)
+    ctx.fillStyle = COLOR.playerBuckle;
+    ctx.fillRect(psx + this.pw/2 - 2, psy + 23, 4, 4);
+    ctx.fillStyle = "#a07020";
+    ctx.fillRect(psx + this.pw/2 - 1, psy + 24, 2, 2);
 
     // Head (skin)
     ctx.fillStyle = "#fde2a0";
@@ -1871,13 +1896,24 @@ export class Game {
     // Body
     ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
     ctx.fillRect(sx + 3, e.y + 12, e.w - 6, e.h - 22);
+    // Body shading (left strip)
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(sx + 3, e.y + 12, 2, e.h - 22);
+    // Belt
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(sx + 3, e.y + e.h - 14, e.w - 6, 2);
     // Head
     ctx.fillStyle = "#e8c89a";
     ctx.fillRect(sx + 6, e.y + 4, e.w - 12, 10);
-    // Eye
-    ctx.fillStyle = "#000";
+    // Head shading
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(sx + 6, e.y + 4, 2, 10);
+    // Eyes (red glow)
+    ctx.fillStyle = "#ff3030";
     const eyeX = e.facing > 0 ? sx + e.w - 9 : sx + 7;
-    ctx.fillRect(eyeX, e.y + 8, 2, 3);
+    ctx.fillRect(eyeX, e.y + 8, 2, 2);
+    ctx.fillStyle = "rgba(255,80,80,0.4)";
+    ctx.fillRect(eyeX - 1, e.y + 7, 4, 4);
 
     // Type-specific accents
     if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
