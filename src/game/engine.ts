@@ -177,6 +177,11 @@ export class Game {
   private fireCdR = 0; private fireCdM = 0; private fireCdMisc = 0;
   private currentPlatform: Platform | null = null;
 
+  // Pacing — builds while untouched, drops on hit, plus a permanent ramp by distance
+  private untouchedTime = 0;     // seconds since last hit
+  private momentum = 0;          // 0..1 bonus from staying clean
+  private paceMult = 1;          // emitted to HUD
+
   // Inventory
   private inventory: InventoryState = {
     owned: [...STARTING_OWNED],
@@ -305,6 +310,7 @@ export class Game {
     this.ammo = 240; this.grenades = 5;
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
+    this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
     this.inventory = {
       owned: [...STARTING_OWNED],
       loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
@@ -388,8 +394,22 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
+    // Pacing — momentum builds while untouched, decays on hit (handled in damagePlayer)
+    this.untouchedTime += dt;
+    // Build momentum after a 3s grace, ramp to full over ~25s untouched
+    if (this.untouchedTime > 3) {
+      this.momentum = Math.min(1, this.momentum + dt / 25);
+    }
+    const meters = this.worldX / PX_PER_METER;
+    // Permanent distance ramp: +0% at 0m, +60% by 3000m, +100% by 8000m (soft cap)
+    const distRamp = Math.min(1.0, meters / 8000) * 1.0 + Math.min(0.6, meters / 5000 * 0.6);
+    const distanceMult = 1 + Math.min(1.0, meters / 8000);
+    // Untouched bonus up to +50%
+    const momentumMult = 1 + this.momentum * 0.5;
+    this.paceMult = distanceMult * momentumMult;
+
     // Movement
-    let speed = 5 * PX_PER_METER;
+    let speed = 5 * PX_PER_METER * this.paceMult;
     if (this.rolling) speed *= 1.6;
     if (this.odActive) speed *= 1.15;
 
