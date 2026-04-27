@@ -940,7 +940,7 @@ export class Game {
     const rank = this.computeRank(meters);
     const desc = this.descTimer > 0
       ? this.description
-      : (this.warning ? `! ${this.warning} !` : `${WEAPONS[this.inventory.loadout[this.inventory.active]].name.toUpperCase()} EQUIPPED  •  ${Math.floor(meters)}m  •  ♪ ${audio.currentTrackName()}`);
+      : (this.warning ? `! ${this.warning} !` : `${WEAPONS[this.inventory.loadout[this.inventory.active]].name.toUpperCase()} EQUIPPED  •  ${Math.floor(meters)}m  •  PACE ${this.paceMult.toFixed(2)}×  •  ♪ ${audio.currentTrackName()}`);
     this.onStatsChange({
       hp: this.pHp, maxHp: this.pMaxHp,
       ammo: this.ammo, grenades: this.grenades,
