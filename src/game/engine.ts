@@ -1223,6 +1223,7 @@ export class Game {
     for (const p of this.platforms) {
       if (p.falling) continue;
       const v = PLATFORM_VARIANTS[p.kind];
+      if (p.kind === "ladder") continue; // ladders don't have a landable top
       if (p.kind === "cloud" && (!p.cloudActive || p.cloudFade < 0.4)) continue;
       // Only land if falling and feet were above the top last frame
       if (this.dropThrough > 0) continue;
