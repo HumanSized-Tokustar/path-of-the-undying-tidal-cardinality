@@ -704,13 +704,15 @@ export class Game {
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
     if (this.dmgRecentTimer > 0) { this.dmgRecentTimer -= dt; if (this.dmgRecentTimer <= 0) this.dmgRecent = 0; }
 
-    // Bullets
+    // Bullets (enemy bullets are slowed by Chrono)
+    const enemySlowB = this.puChrono > 0 ? 0.5 : 1;
     this.bullets = this.bullets.filter(b => {
-      b.life -= dt;
+      const bdt = b.friendly ? dt : dt * enemySlowB;
+      b.life -= bdt;
       if (b.life <= 0) return false;
-      if (b.friendly && b.r >= 8) b.vy += 1500 * dt;
+      if (b.friendly && b.r >= 8) b.vy += 1500 * bdt;
       if (this.weather === "windy" && !b.friendly) b.vx *= 0.998;
-      b.x += b.vx * dt; b.y += b.vy * dt;
+      b.x += b.vx * bdt; b.y += b.vy * bdt;
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
       if (b.friendly) {
