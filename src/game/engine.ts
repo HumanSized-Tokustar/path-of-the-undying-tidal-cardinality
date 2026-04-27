@@ -1,26 +1,23 @@
 import { audio } from "./audio";
-import { WEAPONS, WeaponId, STARTING_LOADOUT, STARTING_OWNED } from "./weapons";
+import { WEAPONS, WeaponId, STARTING_OWNED, STARTING_RANGED, STARTING_MELEE, STARTING_MISC_A, STARTING_MISC_B } from "./weapons";
 import { PLATFORM_VARIANTS, PlatformKind, pickPlatformKind } from "./platforms";
 
 // ============================================================
-// PATH OF THE UNDYING TIDAL CARDINALITY — Core Engine (Wave 3)
-// Adds: pause, inventory, weapon switching/hotbar, enemy variants,
-// platform variants, redesigned HUD signaling.
+// PATH OF THE UNDYING TIDAL CARDINALITY — Wave 4 Engine
+// 6/1/2 weapon classes, parry+grab, day/night, smarter AI,
+// jump-through platforms, humanoid sprites, difficulty.
 // ============================================================
 
 export type Phase = "menu" | "playing" | "paused" | "inventory" | "dead";
+export type Difficulty = "dunce" | "alright" | "son";
 
 const W = 960;
 const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
+const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
 
 const COLOR = {
-  sky1: "#1a2342",
-  sky2: "#2a3a6a",
-  mtnFar: "#2c3a5e",
-  mtnMid: "#3a4a72",
-  mtnNear: "#4a5a82",
   ground: "#3b2a1a",
   groundTop: "#5a8a3a",
   player: "#f6c453",
@@ -37,7 +34,12 @@ const COLOR = {
   crystal: "#d97bff",
 };
 
-// Enemy palette
+type EnemyType =
+  | "shooter" | "shooterElite"
+  | "shanker" | "shankerSwift"
+  | "brute"   | "bruteHeavy"
+  | "rider"   | "bomber" | "sniper";
+
 const ENEMY_COLOR: Record<EnemyType, string> = {
   shooter:      "#e85d3a",
   shooterElite: "#ff8c42",
@@ -55,14 +57,16 @@ interface Input {
   jump: boolean; jumpPressed: boolean;
   dash: boolean; dashPressed: boolean;
   fireR: boolean; fireRPressed: boolean;
-  fireM: boolean; fireMPressed: boolean;
+  miscA: boolean; miscAPressed: boolean; miscAReleased: boolean;
+  miscB: boolean; miscBPressed: boolean; miscBReleased: boolean;
   melee: boolean; meleePressed: boolean;
   shield: boolean; shieldPressed: boolean;
-  overdrive: boolean; overdrivePressed: boolean;
-  inventoryPressed: boolean;
-  pausePressed: boolean;
-  interactPressed: boolean;
-  slot1Pressed: boolean; slot2Pressed: boolean; slot3Pressed: boolean;
+  overdrivePressed: boolean;       // G
+  parryPressed: boolean;           // E
+  grabPressed: boolean;            // F
+  inventoryPressed: boolean;       // Y
+  pausePressed: boolean;           // P
+  slotPressed: boolean[]; // 1..6
   wheelDelta: number;
 }
 
@@ -70,24 +74,21 @@ interface Bullet {
   x: number; y: number; vx: number; vy: number;
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
   color: string;
+  kind?: "normal" | "molotov";
 }
-interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; }
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; gravity?: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
 
 interface Platform {
   x: number; y: number; w: number; h: number;
   kind: PlatformKind;
-  // Crumble
   cracked: boolean; crumbleTimer: number; falling: boolean; fallVy: number;
-  // Moving
   baseX: number; baseY: number; phase: number; horizontal: boolean;
+  conveyorDir: 1 | -1;
+  cloudFade: number;     // 0 invisible..1 full
+  cloudActive: boolean;  // currently usable
+  cloudRespawn: number;
 }
-
-type EnemyType =
-  | "shooter" | "shooterElite"
-  | "shanker" | "shankerSwift"
-  | "brute"   | "bruteHeavy"
-  | "rider"   | "bomber" | "sniper";
 
 interface Enemy {
   type: EnemyType;
@@ -96,10 +97,16 @@ interface Enemy {
   onGround: boolean; facing: 1 | -1;
   fireCd: number; aiTimer: number; targetDx: number;
   hurtFlash: number;
-  // burst / charge
   burstLeft: number; burstCd: number;
   chargeTime: number; charging: boolean;
   flying: boolean; baseY: number;
+  jumpCd: number;
+  disabled: number;       // grabbed
+  grabbed: boolean;
+  thrown: boolean; throwVx: number; throwVy: number;
+  legPhase: number;
+  glintTimer: number;     // death glint
+  dying: boolean;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -109,10 +116,17 @@ const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
 export interface InventoryState {
   owned: WeaponId[];
-  loadout: [WeaponId, WeaponId, WeaponId];
-  active: 0 | 1 | 2;
+  // 6/1/2 class layout
+  ranged: WeaponId[];     // length 6
+  melee: WeaponId;
+  miscA: WeaponId;
+  miscB: WeaponId;
+  activeRanged: number;   // 0..5
   consumables: { medkit: number; ammoPack: number };
   augments: string[];
+  // Back-compat for legacy InventoryOverlay (treated as the old hotbar)
+  loadout: [WeaponId, WeaponId, WeaponId];
+  active: 0 | 1 | 2;
 }
 
 export interface GameStats {
@@ -131,9 +145,15 @@ export interface GameStats {
   rank: string; rankColor: string;
   trackName: string;
   warning: string | null;
-  description: string;       // dynamic bottom-bar text
+  description: string;
   inventory: InventoryState;
   phase: Phase;
+  difficulty: Difficulty;
+  weather: string;
+  cycleProgress: number;   // 0..1 day/night
+  parryWindow: number;     // 0 if none
+  miscCharge: number;      // 0..1 charging throw
+  grabbedHas: boolean;
 }
 
 export class Game {
@@ -142,26 +162,11 @@ export class Game {
   phase: Phase = "menu";
   onStatsChange: (s: GameStats) => void;
   onPhaseChange: (p: Phase) => void;
+  difficulty: Difficulty = "alright";
 
-  // Input
-  private input: Input = {
-    left: false, right: false, up: false, down: false,
-    jump: false, jumpPressed: false,
-    dash: false, dashPressed: false,
-    fireR: false, fireRPressed: false,
-    fireM: false, fireMPressed: false,
-    melee: false, meleePressed: false,
-    shield: false, shieldPressed: false,
-    overdrive: false, overdrivePressed: false,
-    inventoryPressed: false,
-    pausePressed: false,
-    interactPressed: false,
-    slot1Pressed: false, slot2Pressed: false, slot3Pressed: false,
-    wheelDelta: 0,
-  };
+  private input: Input = this.makeInput();
   private keys = new Set<string>();
 
-  // Player
   private px = 200; private py = 0; private pvx = 0; private pvy = 0;
   private pw = 28; private ph = 40;
   private pOnGround = false;
@@ -170,28 +175,32 @@ export class Game {
   private pHp = 123; private pMaxHp = 123;
   private pInv = 0;
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
+  private dashTrail: { x:number; y:number; life:number }[] = [];
   private rolling = false; private rollTime = 0;
   private slamming = false;
+  private dropThrough = 0; // disable jump-through landings briefly
   private shieldActive = false; private shieldTime = 0; private shieldCd = 0;
   private odBar = 0; private odActive = false; private odTime = 0;
-  private fireCdR = 0; private fireCdM = 0; private fireCdMisc = 0;
+  private fireCdR = 0; private fireCdM = 0; private fireCdMiscA = 0; private fireCdMiscB = 0;
   private currentPlatform: Platform | null = null;
 
-  // Pacing — builds while untouched, drops on hit, plus a permanent ramp by distance
-  private untouchedTime = 0;     // seconds since last hit
-  private momentum = 0;          // 0..1 bonus from staying clean
-  private paceMult = 1;          // emitted to HUD
+  // Misc charged-throw
+  private miscACharge = 0;        // seconds held
+  private miscBCharge = 0;
 
-  // Inventory
-  private inventory: InventoryState = {
-    owned: [...STARTING_OWNED],
-    loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
-    active: 0,
-    consumables: { medkit: 2, ammoPack: 3 },
-    augments: [],
-  };
+  // Parry
+  private parryWindow = 0;        // remaining seconds window is open
+  private parryFlash = 0;
 
-  // World
+  // Grab/throw
+  private grabbed: Enemy | null = null;
+
+  private untouchedTime = 0;
+  private momentum = 0;
+  private paceMult = 1;
+
+  private inventory: InventoryState = this.makeInventory();
+
   private camX = 0;
   private worldX = 0;
   private platforms: Platform[] = [];
@@ -209,28 +218,26 @@ export class Game {
   private spawnTimer = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 • SHIFT DASH • J FIRE • K GRENADE • L MELEE • 1/2/3 SWITCH • Y INVENTORY • P PAUSE";
+  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop) • SHIFT DASH • J FIRE • K MISC A • O MISC B • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
-  // === Animation
   private animTime = 0;
-  private meleeSwing = 0; // 0..1 visual swing
-  // === Weather
-  private weather: "clear" | "rain" | "snow" | "storm" = "clear";
+  private meleeSwing = 0;
+
+  private weather: "clear" | "rain" | "snow" | "storm" | "fog" | "windy" = "clear";
   private weatherSwitch = 8;
   private rainDrops: { x:number; y:number; vy:number }[] = [];
   private lightningFlash = 0;
   private nextLightning = 6;
-  // === Power-ups (active timers, 5s each)
+
+  private cycleTime = 0; // 0..DAY_NIGHT_PERIOD
+
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puForesight = 0;
-  // === World pickups on ground (coins/tokens/crystals/powerups) — different list separate from drops
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_for"; value:number }[] = [];
   private worldPickupNextX = 600;
-  // === Landmarks (safezones)
   private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
   private inSafeZone = false;
-  // Overdrive previous max HP cache
   private odPrevMaxHp = 123;
 
   private last = 0; private rafId = 0;
@@ -247,6 +254,48 @@ export class Game {
     this.onPhaseChange = opts.onPhaseChange;
     this.attachInput();
   }
+
+  private makeInput(): Input {
+    return {
+      left: false, right: false, up: false, down: false,
+      jump: false, jumpPressed: false,
+      dash: false, dashPressed: false,
+      fireR: false, fireRPressed: false,
+      miscA: false, miscAPressed: false, miscAReleased: false,
+      miscB: false, miscBPressed: false, miscBReleased: false,
+      melee: false, meleePressed: false,
+      shield: false, shieldPressed: false,
+      overdrivePressed: false,
+      parryPressed: false, grabPressed: false,
+      inventoryPressed: false, pausePressed: false,
+      slotPressed: [false,false,false,false,false,false],
+      wheelDelta: 0,
+    };
+  }
+
+  private makeInventory(): InventoryState {
+    const ranged = [...STARTING_RANGED];
+    return {
+      owned: [...STARTING_OWNED],
+      ranged,
+      melee: STARTING_MELEE,
+      miscA: STARTING_MISC_A,
+      miscB: STARTING_MISC_B,
+      activeRanged: 0,
+      consumables: { medkit: 2, ammoPack: 3 },
+      augments: [],
+      // back-compat fields (mirror first 3 ranged so legacy HUD doesn't break)
+      loadout: [ranged[0], ranged[1], ranged[2]] as [WeaponId, WeaponId, WeaponId],
+      active: 0,
+    };
+  }
+
+  setDifficulty(d: Difficulty) { this.difficulty = d; this.emitStats(); }
+
+  // Multipliers (enemy stats)
+  private diffEnemyHp() { return this.difficulty === "dunce" ? 0.7 : this.difficulty === "son" ? 1.5 : 1; }
+  private diffEnemyDmg() { return this.difficulty === "dunce" ? 0.6 : this.difficulty === "son" ? 1.5 : 1; }
+  private diffEnemyFire() { return this.difficulty === "dunce" ? 1.4 : this.difficulty === "son" ? 0.7 : 1; }
 
   private attachInput() {
     window.addEventListener("keydown", this.onKeyDown);
@@ -265,7 +314,7 @@ export class Game {
   };
   private onKeyDown = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","j","k","l","i","f","y","p","e","h","r","shift","1","2","3"].includes(k)) e.preventDefault();
+    if (["w","a","s","d"," ","j","k","l","i","f","g","y","p","e","o","h","r","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
     switch (k) {
@@ -276,16 +325,17 @@ export class Game {
       case " ": this.input.jump = true; this.input.jumpPressed = true; break;
       case "shift": this.input.dash = true; this.input.dashPressed = true; break;
       case "j": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "k": this.input.fireM = true; this.input.fireMPressed = true; break;
+      case "k": this.input.miscA = true; this.input.miscAPressed = true; break;
+      case "o": this.input.miscB = true; this.input.miscBPressed = true; break;
       case "l": this.input.melee = true; this.input.meleePressed = true; break;
       case "i": this.input.shield = true; this.input.shieldPressed = true; break;
-      case "f": this.input.overdrive = true; this.input.overdrivePressed = true; break;
+      case "g": this.input.overdrivePressed = true; break;
+      case "e": this.input.parryPressed = true; break;
+      case "f": this.input.grabPressed = true; break;
       case "y": this.input.inventoryPressed = true; break;
       case "p": this.input.pausePressed = true; break;
-      case "e": this.input.interactPressed = true; break;
-      case "1": this.input.slot1Pressed = true; break;
-      case "2": this.input.slot2Pressed = true; break;
-      case "3": this.input.slot3Pressed = true; break;
+      case "1": case "2": case "3": case "4": case "5": case "6":
+        this.input.slotPressed[parseInt(k) - 1] = true; break;
     }
   };
   private onKeyUp = (e: KeyboardEvent) => {
@@ -299,10 +349,10 @@ export class Game {
       case " ": this.input.jump = false; break;
       case "shift": this.input.dash = false; break;
       case "j": this.input.fireR = false; break;
-      case "k": this.input.fireM = false; break;
+      case "k": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "o": this.input.miscB = false; this.input.miscBReleased = true; break;
       case "l": this.input.melee = false; break;
       case "i": this.input.shield = false; break;
-      case "f": this.input.overdrive = false; break;
     }
   };
 
@@ -317,7 +367,7 @@ export class Game {
   reset() {
     this.px = 200; this.py = GROUND_Y - this.ph; this.pvx = 0; this.pvy = 0;
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
-    this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0;
+    this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
     this.camX = 0; this.worldX = 0;
@@ -335,13 +385,10 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puForesight = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
-    this.inventory = {
-      owned: [...STARTING_OWNED],
-      loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
-      active: 0,
-      consumables: { medkit: 2, ammoPack: 3 },
-      augments: [],
-    };
+    this.miscACharge = 0; this.miscBCharge = 0;
+    this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
+    this.cycleTime = 0;
+    this.inventory = this.makeInventory();
     for (let i = 0; i < 12; i++) this.spawnPlatformAt(this.px + 220 + i * 240);
   }
   goToMenu() {
@@ -364,14 +411,44 @@ export class Game {
       this.last = performance.now();
     }
   }
-  equipToSlot(weaponId: WeaponId, slot: 0 | 1 | 2) {
+
+  // Equip APIs (class-aware)
+  equipRangedSlot(weaponId: WeaponId, slot: number) {
+    if (slot < 0 || slot > 5) return;
     if (!this.inventory.owned.includes(weaponId)) return;
-    this.inventory.loadout[slot] = weaponId;
+    if (WEAPONS[weaponId].class !== "ranged") return;
+    this.inventory.ranged[slot] = weaponId;
+    this.syncLegacyLoadout();
     this.emitStats();
   }
-  setActiveSlot(slot: 0 | 1 | 2) {
-    this.inventory.active = slot;
+  equipMelee(weaponId: WeaponId) {
+    if (!this.inventory.owned.includes(weaponId)) return;
+    if (WEAPONS[weaponId].class !== "melee") return;
+    this.inventory.melee = weaponId;
     this.emitStats();
+  }
+  equipMisc(weaponId: WeaponId, slot: "A" | "B") {
+    if (!this.inventory.owned.includes(weaponId)) return;
+    if (WEAPONS[weaponId].class !== "misc") return;
+    if (slot === "A") this.inventory.miscA = weaponId; else this.inventory.miscB = weaponId;
+    this.emitStats();
+  }
+  // Legacy (used by old InventoryOverlay) — routes to ranged
+  equipToSlot(weaponId: WeaponId, slot: 0 | 1 | 2) {
+    if (WEAPONS[weaponId].class === "ranged") this.equipRangedSlot(weaponId, slot);
+    else if (WEAPONS[weaponId].class === "melee") this.equipMelee(weaponId);
+    else if (WEAPONS[weaponId].class === "misc") this.equipMisc(weaponId, slot === 0 ? "A" : "B");
+  }
+  setActiveSlot(slot: number) {
+    if (slot < 0 || slot > 5) return;
+    this.inventory.activeRanged = slot;
+    this.syncLegacyLoadout();
+    this.emitStats();
+  }
+  private syncLegacyLoadout() {
+    const r = this.inventory.ranged;
+    this.inventory.loadout = [r[0], r[1], r[2]] as [WeaponId, WeaponId, WeaponId];
+    this.inventory.active = (Math.min(2, this.inventory.activeRanged) as 0|1|2);
   }
   useMedkit() {
     if (this.inventory.consumables.medkit > 0 && this.pHp < this.pMaxHp) {
@@ -389,11 +466,12 @@ export class Game {
       this.emitStats();
     }
   }
+  // Shop hook (sound)
+  purchaseSound() { audio.play("applepay"); }
 
   private frame = (t: number) => {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
-    // Always handle pause/inv toggles even when paused
     if (this.input.pausePressed) { this.input.pausePressed = false; this.togglePause(); }
     if (this.input.inventoryPressed) { this.input.inventoryPressed = false; this.toggleInventory(); }
     if (this.phase === "playing") this.update(dt);
@@ -404,61 +482,72 @@ export class Game {
   private update(dt: number) {
     this.timeAlive += dt;
     this.weatherTime += dt;
+    this.cycleTime = (this.cycleTime + dt) % DAY_NIGHT_PERIOD;
 
-    // Weapon switching
-    if (this.input.slot1Pressed) { this.inventory.active = 0; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[0]].name}`); }
-    if (this.input.slot2Pressed) { this.inventory.active = 1; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[1]].name}`); }
-    if (this.input.slot3Pressed) { this.inventory.active = 2; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[2]].name}`); }
-    this.input.slot1Pressed = this.input.slot2Pressed = this.input.slot3Pressed = false;
+    // Slot select 1..6
+    for (let i = 0; i < 6; i++) {
+      if (this.input.slotPressed[i]) {
+        this.inventory.activeRanged = i;
+        this.syncLegacyLoadout();
+        this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.ranged[i]].name} [${i+1}]`);
+      }
+      this.input.slotPressed[i] = false;
+    }
     if (Math.abs(this.input.wheelDelta) > 30) {
       const dir = this.input.wheelDelta > 0 ? 1 : -1;
-      this.inventory.active = ((this.inventory.active + dir + 3) % 3) as 0 | 1 | 2;
-      this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[this.inventory.active]].name}`);
+      this.inventory.activeRanged = (this.inventory.activeRanged + dir + 6) % 6;
+      this.syncLegacyLoadout();
+      this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.ranged[this.inventory.activeRanged]].name}`);
       this.input.wheelDelta = 0;
     }
     this.input.wheelDelta *= 0.5;
 
-    // Pacing — momentum builds while untouched, decays on hit (handled in damagePlayer)
+    // Pacing
     this.untouchedTime += dt;
-    // Build momentum after a 3s grace, ramp to full over ~25s untouched
-    if (this.untouchedTime > 3) {
-      this.momentum = Math.min(1, this.momentum + dt / 25);
-    }
+    if (this.untouchedTime > 3) this.momentum = Math.min(1, this.momentum + dt / 25);
     const meters = this.worldX / PX_PER_METER;
-    // Permanent distance ramp: +0% at 0m, +60% by 3000m, +100% by 8000m (soft cap)
-    const distRamp = Math.min(1.0, meters / 8000) * 1.0 + Math.min(0.6, meters / 5000 * 0.6);
-    const distanceMult = 1 + Math.min(1.0, meters / 8000);
-    // Untouched bonus up to +50%
-    const momentumMult = 1 + this.momentum * 0.5;
-    this.paceMult = distanceMult * momentumMult;
+    // Base 15 m/s, +10 per 400m, cap 105
+    const stepIncrements = Math.floor(meters / 400);
+    const baseMs = Math.min(105, 15 + stepIncrements * 10);
+    const momentumMult = 1 + this.momentum * 0.15;
+    this.paceMult = (baseMs / 15) * momentumMult;
 
-    // Movement
-    let speed = 5 * PX_PER_METER * this.paceMult;
+    // Movement: convert m/s to px/s
+    let speed = baseMs * (PX_PER_METER / 3) * momentumMult; // tuned: ~5px/m visual, scales smoothly
     if (this.rolling) speed *= 1.6;
     if (this.odActive) speed *= 1.25;
     if (this.puSpeed > 0) speed *= 2;
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
+    if (this.weather === "snow") speed *= 0.95;
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
-    // Friction from current platform (ice = slippery)
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
+    const conveyorPush = this.currentPlatform && PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx
+      ? PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx! * (this.currentPlatform.conveyorDir)
+      : 0;
 
     if (this.input.left) { this.pFacing = -1; this.pvx = friction < 0.5 ? this.pvx + (-speed - this.pvx) * friction : -speed; }
     else if (this.input.right) { this.pFacing = 1; this.pvx = friction < 0.5 ? this.pvx + (speed - this.pvx) * friction : speed; }
     else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
+    this.pvx += conveyorPush;
 
-    // Dash
+    // Dash (with i-frames)
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
       if (this.input.down && this.pOnGround) { this.rolling = true; this.rollTime = 0.5; }
       else {
-        this.dashTime = 0.18;
-        this.pInv = Math.max(this.pInv, 0.18);
+        this.dashTime = 0.28; // longer dash
+        this.pInv = Math.max(this.pInv, 0.28); // i-frames whole dash
         this.dashCharges--;
         if (this.dashRecharge <= 0) this.dashRecharge = 2;
       }
     }
-    if (this.dashTime > 0) { this.pvx = this.pFacing * speed * 2.6; this.dashTime -= dt; }
+    if (this.dashTime > 0) {
+      this.pvx = this.pFacing * speed * 3.4;
+      this.dashTime -= dt;
+      this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
+    }
+    this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) { this.rollTime -= dt; this.pvx = this.pFacing * speed * 1.6; if (this.rollTime <= 0) this.rolling = false; }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
@@ -468,10 +557,21 @@ export class Game {
       }
     }
 
-    if (this.input.jumpPressed && this.pJumps < this.maxJumps) {
-      this.pvy = -560; this.pJumps++;
-      this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#cfe");
+    // Jump (or drop-through if pressing S)
+    if (this.input.jumpPressed) {
+      if (this.input.down && this.pOnGround && this.currentPlatform && this.currentPlatform.y > GROUND_Y - 200) {
+        // Drop through current platform
+        this.dropThrough = 0.25;
+        this.py += 4;
+        this.pvy = 60;
+        this.pOnGround = false;
+      } else if (this.pJumps < this.maxJumps) {
+        this.pvy = -560; this.pJumps++;
+        this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#cfe");
+      }
     }
+    if (this.dropThrough > 0) this.dropThrough -= dt;
+
     if (!this.pOnGround && this.input.down && !this.slamming) { this.slamming = true; this.pvy = 900; }
 
     this.pvy += 1700 * dt;
@@ -496,6 +596,7 @@ export class Game {
     this.camX = this.px - W * 0.35;
     if (this.camX < 0) this.camX = 0;
 
+    // Shield
     if (this.input.shieldPressed && this.shieldCd <= 0) {
       this.shieldActive = true; this.shieldTime = 5; this.shieldCd = 6;
       this.flashDescription("SHIELD UP — 95% damage reduction");
@@ -503,9 +604,9 @@ export class Game {
     if (this.shieldActive) { this.shieldTime -= dt; if (this.shieldTime <= 0) this.shieldActive = false; }
     if (this.shieldCd > 0) this.shieldCd -= dt;
 
+    // Overdrive (G)
     if (this.input.overdrivePressed && this.odBar >= 1 && !this.odActive) {
       this.odActive = true; this.odTime = 6; this.odBar = 0;
-      // Double offensive stats AND double max HP + heal proportionally
       this.odPrevMaxHp = this.pMaxHp;
       this.pMaxHp = this.odPrevMaxHp * 2;
       this.pHp = Math.min(this.pMaxHp, this.pHp + this.odPrevMaxHp);
@@ -522,73 +623,74 @@ export class Game {
 
     if (this.fireCdR > 0) this.fireCdR -= dt;
     if (this.fireCdM > 0) this.fireCdM -= dt;
-    if (this.fireCdMisc > 0) this.fireCdMisc -= dt;
+    if (this.fireCdMiscA > 0) this.fireCdMiscA -= dt;
+    if (this.fireCdMiscB > 0) this.fireCdMiscB -= dt;
     if (this.pInv > 0) this.pInv -= dt;
     if (this.descTimer > 0) this.descTimer -= dt;
     if (this.meleeSwing > 0) this.meleeSwing = Math.max(0, this.meleeSwing - dt * 4);
+    if (this.parryFlash > 0) this.parryFlash -= dt;
     if (this.puDamage > 0) this.puDamage -= dt;
     if (this.puSpeed > 0) this.puSpeed -= dt;
     if (this.puInvincible > 0) { this.puInvincible -= dt; this.pInv = Math.max(this.pInv, 0.1); }
     if (this.puForesight > 0) this.puForesight -= dt;
 
-    // J = fire ACTIVE ranged weapon only (knife in slot still acts melee)
+    // J = fire active ranged
     if (this.input.fireR && this.fireCdR <= 0) {
-      const w = WEAPONS[this.inventory.loadout[this.inventory.active]];
+      const w = WEAPONS[this.inventory.ranged[this.inventory.activeRanged]];
       const dmgMult = (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       if (w.kind === "ranged" && this.ammo >= w.ammoPerShot) {
         this.fireCdR = w.fireCd;
         this.ammo -= w.ammoPerShot;
         for (let p = 0; p < w.pellets; p++) {
-          const ang = (Math.random() - 0.5) * w.spread;
+          const ang = (Math.random() - 0.5) * w.spread + (this.weather === "windy" ? 0.04 : 0);
           const cs = Math.cos(ang), sn = Math.sin(ang);
           this.bullets.push({
             x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
             vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
-            dmg: w.dmg * dmgMult, life: 0.9, friendly: true, r: 4, pierce: w.pierce,
+            dmg: w.dmg * dmgMult, life: 0.9, friendly: true, r: w.id === "rocket" ? 7 : 4, pierce: w.pierce,
             color: w.color,
           });
         }
         audio.play("fire");
         this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
-      } else if (w.kind === "melee") {
-        this.fireCdR = w.fireCd;
-        this.meleeSwing = 1;
-        const dmg = w.dmg * dmgMult;
-        this.enemies.forEach(e => {
-          if (Math.sign(e.x - this.px) === this.pFacing &&
-              Math.abs(e.x - this.px) < 70 && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
-        });
-        audio.play("fire");
       }
     }
-    // Always-melee L (knife) — animated
+    // L = melee
     if (this.input.meleePressed && this.fireCdM <= 0) {
-      this.fireCdM = WEAPONS.knife.fireCd;
+      const w = WEAPONS[this.inventory.melee];
+      this.fireCdM = w.fireCd;
       this.meleeSwing = 1;
-      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
+      const dmg = w.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
+      const reach = w.id === "katana" ? 80 : 60;
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
-            Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
+            Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
       });
-      audio.play("fire");
+      audio.play("slash");
     }
-    // Always-grenade K
-    if (this.input.fireMPressed && this.fireCdMisc <= 0 && this.grenades > 0) {
-      this.fireCdMisc = 1;
-      this.grenades--;
-      this.bullets.push({
-        x: this.px + this.pw/2, y: this.py + this.ph * 0.3,
-        vx: this.pFacing * 360, vy: -380,
-        dmg: WEAPONS.grenade.dmg * (this.odActive ? 2 : 1), life: 2, friendly: true, r: 8, pierce: 99,
-        color: WEAPONS.grenade.color,
-      });
+
+    // K = misc A (charged throw / deploy)
+    this.handleMisc("A", dt);
+    this.handleMisc("B", dt);
+
+    // E = parry
+    this.updateParry(dt);
+    if (this.input.parryPressed) {
+      this.input.parryPressed = false;
+      this.tryParry();
+    }
+
+    // F = grab/throw
+    if (this.input.grabPressed) {
+      this.input.grabPressed = false;
+      this.handleGrabThrow();
     }
 
     this.input.jumpPressed = false; this.input.dashPressed = false;
-    this.input.fireRPressed = false; this.input.fireMPressed = false;
+    this.input.fireRPressed = false; this.input.miscAPressed = false; this.input.miscBPressed = false;
+    this.input.miscAReleased = false; this.input.miscBReleased = false;
     this.input.meleePressed = false; this.input.shieldPressed = false;
     this.input.overdrivePressed = false;
-    this.input.interactPressed = false;
 
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
     if (this.dmgRecentTimer > 0) { this.dmgRecentTimer -= dt; if (this.dmgRecentTimer <= 0) this.dmgRecent = 0; }
@@ -598,11 +700,13 @@ export class Game {
       b.life -= dt;
       if (b.life <= 0) return false;
       if (b.friendly && b.r >= 8) b.vy += 1500 * dt;
+      if (this.weather === "windy" && !b.friendly) b.vx *= 0.998;
       b.x += b.vx * dt; b.y += b.vy * dt;
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
       if (b.friendly) {
         for (const e of this.enemies) {
+          if (e.dying) continue;
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
             this.damageEnemy(e, b.dmg);
             if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, 90); return false; }
@@ -620,7 +724,7 @@ export class Game {
 
     this.particles = this.particles.filter(p => {
       p.life -= dt;
-      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 600 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.gravity ?? 600) * dt;
       return p.life > 0;
     });
 
@@ -648,41 +752,38 @@ export class Game {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnEnemy();
-      const meters = this.worldX / PX_PER_METER;
       const ramp = clamp(1 - meters / 3000, 0.2, 1);
       this.spawnTimer = rand(1.4, 2.6) * ramp;
+      if (this.difficulty === "son") this.spawnEnemy();
     }
 
-    // World streaming
     while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
       this.spawnPlatformAt(this.lastPlatformX() + rand(140, 280));
     }
     this.platforms = this.platforms.filter(p => p.x + p.w > this.camX - 200 && p.y < H + 200);
 
-    // === World ground pickups (coins/tokens/crystals/powerups along the road)
     while (this.worldPickupNextX < this.camX + W + 400) {
       const x = this.worldPickupNextX;
       const r = Math.random();
       let type: any = "coin", value = randi(1, 30);
-      if (r < 0.05) { // 5% power-up
+      if (r < 0.10) {
         const pr = Math.random();
         type = pr < 0.25 ? "pu_dmg" : pr < 0.5 ? "pu_spd" : pr < 0.75 ? "pu_inv" : "pu_for";
-        value = 5; // seconds
-      } else if (r < 0.10) { type = "crystal"; value = randi(1, 3); }
-      else if (r < 0.20) { type = "token"; value = randi(1, 2); }
+        value = 5;
+      } else if (r < 0.18) { type = "crystal"; value = randi(1, 3); }
+      else if (r < 0.32) { type = "token"; value = randi(1, 2); }
       else { type = "coin"; value = randi(1, 30); }
       this.worldPickups.push({ x, y: GROUND_Y - 14, type, value });
-      this.worldPickupNextX += randi(140, 320);
+      this.worldPickupNextX += randi(80, 220);
     }
-    // Pick up world items on touch
     this.worldPickups = this.worldPickups.filter(p => {
       if (p.x < this.camX - 200) return false;
       const dx = (this.px + this.pw/2) - p.x;
       const dy = (this.py + this.ph/2) - p.y;
       if (Math.abs(dx) < 24 && Math.abs(dy) < 28) {
-        if (p.type === "coin") { this.coins += p.value; }
-        else if (p.type === "token") { this.tokens += p.value; }
-        else if (p.type === "crystal") { this.crystals += p.value; }
+        if (p.type === "coin") this.coins += p.value;
+        else if (p.type === "token") this.tokens += p.value;
+        else if (p.type === "crystal") this.crystals += p.value;
         else if (p.type === "pu_dmg") { this.puDamage = 5; this.flashDescription("POWER-UP — 2× DAMAGE (5s)"); }
         else if (p.type === "pu_spd") { this.puSpeed = 5; this.flashDescription("POWER-UP — 2× SPEED (5s)"); }
         else if (p.type === "pu_inv") { this.puInvincible = 5; this.flashDescription("POWER-UP — INVINCIBLE (5s)"); }
@@ -692,9 +793,8 @@ export class Game {
       return true;
     });
 
-    // === Landmarks (safezones)
+    // Landmarks
     const metersNow = Math.floor(this.worldX / PX_PER_METER);
-    // Spawn next landmark roughly every 1000m (main+ally), 7777m (shady) — predicted positions
     if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
       const baseM = metersNow + 200;
       const nextMain = Math.ceil(baseM / 1000) * 1000;
@@ -706,19 +806,17 @@ export class Game {
       }
     }
     this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
-    // Determine if player is inside a safezone
     this.inSafeZone = this.landmarks.some(l =>
       this.px + this.pw > l.x && this.px < l.x + l.w);
 
-    // === Weather
+    // Weather (excluding day/night which is independent)
     this.weatherSwitch -= dt;
     if (this.weatherSwitch <= 0) {
-      const opts: any[] = ["clear","clear","rain","snow","storm"];
+      const opts: any[] = ["clear","clear","rain","snow","storm","fog","windy"];
       this.weather = opts[Math.floor(Math.random() * opts.length)];
-      this.weatherSwitch = rand(20, 45);
+      this.weatherSwitch = rand(45, 90);
       this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
     }
-    // Rain particle init
     if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
       for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
     }
@@ -734,7 +832,6 @@ export class Game {
         this.nextLightning = rand(4, 9);
         this.lightningFlash = 1;
         this.screenShake = Math.max(this.screenShake, 6);
-        // Strike a random visible enemy or near player
         if (this.enemies.length && Math.random() < 0.7) {
           const t = pick(this.enemies);
           this.damageEnemy(t, 80);
@@ -761,6 +858,131 @@ export class Game {
     this.emitStats();
   }
 
+  // === Misc weapon handling (charged throw)
+  private handleMisc(slot: "A" | "B", dt: number) {
+    const isA = slot === "A";
+    const wid = isA ? this.inventory.miscA : this.inventory.miscB;
+    const w = WEAPONS[wid];
+    const cdRef = isA ? "fireCdMiscA" : "fireCdMiscB";
+    const chargeRef = isA ? "miscACharge" : "miscBCharge";
+    const heldKey = isA ? this.input.miscA : this.input.miscB;
+    const releasedKey = isA ? this.input.miscAReleased : this.input.miscBReleased;
+
+    // Deploy weapons (medkit) — fire on press
+    if ((isA ? this.input.miscAPressed : this.input.miscBPressed) && w.deploy && (this as any)[cdRef] <= 0) {
+      (this as any)[cdRef] = w.fireCd;
+      if (w.id === "medkit") this.useMedkit(); // direct heal
+      else if (w.id === "smoke") {
+        // deploy smoke at feet
+        for (let i = 0; i < 30; i++) this.particles.push({ x: this.px + this.pw/2, y: this.py + this.ph, vx: rand(-30,30), vy: rand(-60,-10), life: 2, max: 2, color: "#cfcfcf", size: 4, gravity: -10 });
+      }
+      audio.play("miscthrow");
+      return;
+    }
+
+    // Hold to charge
+    if (heldKey && (this as any)[cdRef] <= 0) {
+      (this as any)[chargeRef] = Math.min(1.2, (this as any)[chargeRef] + dt);
+    }
+    // Release: throw
+    if (releasedKey && (this as any)[cdRef] <= 0 && !w.deploy) {
+      const charge = clamp((this as any)[chargeRef] / 1.2, 0, 1);
+      (this as any)[chargeRef] = 0;
+      (this as any)[cdRef] = w.fireCd;
+      const baseSpeed = 360;
+      const v = baseSpeed * (0.6 + charge * 1.6);
+      const dmgMult = (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
+      this.bullets.push({
+        x: this.px + this.pw/2, y: this.py + this.ph * 0.3,
+        vx: this.pFacing * v, vy: -380 - charge * 120,
+        dmg: (w.dmg || 1) * dmgMult, life: 2.4, friendly: true, r: 8, pierce: 99,
+        color: w.color,
+        kind: w.id === "molotov" ? "molotov" : "normal",
+      });
+      if (wid === "grenade") this.grenades = Math.max(0, this.grenades - 1);
+      audio.play("miscthrow");
+      this.flashDescription(`THROW MISC — ${w.name} (${Math.round(charge*100)}% charge)`);
+    }
+    // Reset charge if not held
+    if (!heldKey) (this as any)[chargeRef] = Math.max(0, (this as any)[chargeRef] - dt * 2);
+  }
+
+  // === Parry
+  private updateParry(dt: number) {
+    if (this.parryWindow > 0) { this.parryWindow -= dt; if (this.parryWindow <= 0) this.parryWindow = 0; return; }
+    // Scan for incoming threats
+    for (const b of this.bullets) {
+      if (b.friendly) continue;
+      const dx = b.x - (this.px + this.pw/2);
+      const dy = b.y - (this.py + this.ph/2);
+      const d = Math.hypot(dx, dy);
+      if (d < 90) {
+        // is closing?
+        const closing = (b.vx * -dx + b.vy * -dy) > 0;
+        if (closing) { this.parryWindow = 0.35; return; }
+      }
+    }
+  }
+  private tryParry() {
+    if (this.parryWindow <= 0) return;
+    let hit = 0;
+    const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+    for (const b of this.bullets) {
+      if (b.friendly) continue;
+      if (Math.hypot(b.x - cx, b.y - cy) < 90) {
+        b.friendly = true;
+        b.dmg *= 2;
+        const target = this.enemies[0];
+        if (target) {
+          const dx = target.x - b.x, dy = target.y - b.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const sp = Math.hypot(b.vx, b.vy) * 1.5;
+          b.vx = (dx/d) * sp; b.vy = (dy/d) * sp;
+        } else { b.vx = -b.vx; b.vy = -b.vy; }
+        b.color = "#ffd84a";
+        hit++;
+      }
+    }
+    if (hit > 0) {
+      audio.play("parry");
+      this.meleeSwing = 1;
+      this.parryFlash = 0.25;
+      this.parryWindow = 0;
+      this.flashDescription(`PARRY × ${hit}`);
+      for (let i = 0; i < 16; i++) this.particles.push({ x: cx, y: cy, vx: rand(-260,260), vy: rand(-260,-30), life: 0.5, max: 0.5, color: "#fff", size: 3 });
+    }
+  }
+
+  // === Grab/Throw
+  private handleGrabThrow() {
+    if (this.grabbed) {
+      // Throw it
+      const e = this.grabbed;
+      e.grabbed = false;
+      e.disabled = 0;
+      e.thrown = true;
+      e.throwVx = this.pFacing * 600;
+      e.throwVy = -380;
+      this.grabbed = null;
+      this.flashDescription("THROW ENEMY");
+      audio.play("miscthrow");
+    } else {
+      // Find nearest non-boss enemy in range
+      let best: Enemy | null = null; let bestD = 70;
+      for (const e of this.enemies) {
+        if (e.dying || e.thrown) continue;
+        const d = Math.hypot(e.x - (this.px + this.pw/2), e.y - (this.py + this.ph/2));
+        if (d < bestD) { best = e; bestD = d; }
+      }
+      if (best) {
+        best.grabbed = true;
+        best.disabled = 99;
+        this.grabbed = best;
+        this.flashDescription("GRABBED — F again to throw");
+      }
+    }
+  }
+
   private flashDescription(text: string) { this.description = text; this.descTimer = 3; }
 
   private lastPlatformX() {
@@ -781,6 +1003,8 @@ export class Game {
       cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
       baseX: x, baseY: y, phase: Math.random() * Math.PI * 2,
       horizontal: Math.random() < 0.5,
+      conveyorDir: Math.random() < 0.5 ? 1 : -1,
+      cloudFade: 1, cloudActive: true, cloudRespawn: 0,
     });
   }
 
@@ -799,19 +1023,20 @@ export class Game {
         p.fallVy += 1700 * dt;
         p.y += p.fallVy * dt;
       }
+      if (p.kind === "cloud") {
+        if (p.cloudActive && p.cloudFade < 1) p.cloudFade = Math.min(1, p.cloudFade + dt);
+        if (!p.cloudActive) {
+          p.cloudFade = Math.max(0, p.cloudFade - dt);
+          p.cloudRespawn -= dt;
+          if (p.cloudRespawn <= 0) { p.cloudActive = true; }
+        }
+      }
     }
   }
 
   private resolveCollisionsX() {
     if (this.px < 0) this.px = 0;
-    for (const p of this.platforms) {
-      if (p.falling) continue;
-      if (this.px + this.pw > p.x && this.px < p.x + p.w &&
-          this.py + this.ph > p.y && this.py < p.y + p.h) {
-        if (this.pvx > 0) this.px = p.x - this.pw;
-        else if (this.pvx < 0) this.px = p.x + p.w;
-      }
-    }
+    // Only the GROUND has horizontal solid walls. All platforms are jump-through.
   }
   private resolveCollisionsY() {
     if (this.py + this.ph >= GROUND_Y) {
@@ -819,25 +1044,34 @@ export class Game {
     }
     for (const p of this.platforms) {
       if (p.falling) continue;
+      const v = PLATFORM_VARIANTS[p.kind];
+      if (p.kind === "cloud" && (!p.cloudActive || p.cloudFade < 0.4)) continue;
+      // Only land if falling and feet were above the top last frame
+      if (this.dropThrough > 0) continue;
+      if (this.pvy <= 0) continue;
+      const prevBottom = this.py + this.ph - this.pvy * 0.001; // approx
+      // Use pvy: feet must be crossing top
       if (this.px + this.pw > p.x && this.px < p.x + p.w &&
-          this.py + this.ph > p.y && this.py < p.y + p.h) {
-        if (this.pvy > 0) {
-          this.py = p.y - this.ph; this.pvy = 0; this.pOnGround = true; this.pJumps = 0;
-          this.currentPlatform = p;
-          if (p.kind === "spike") this.damagePlayer(PLATFORM_VARIANTS.spike.damageOnTop);
-          if (p.kind === "crumble" && !p.cracked) { p.cracked = true; p.crumbleTimer = 0.5; }
-        } else if (this.pvy < 0) {
-          this.py = p.y + p.h; this.pvy = 0;
+          this.py + this.ph >= p.y && this.py + this.ph - this.pvy * 0.02 <= p.y + 4) {
+        this.py = p.y - this.ph;
+        this.pvy = v.bounce ? -560 * v.bounce : 0;
+        if (!v.bounce) { this.pOnGround = true; this.pJumps = 0; }
+        this.currentPlatform = p;
+        if (p.kind === "spike") this.damagePlayer(v.damageOnTop);
+        if (p.kind === "crumble" && !p.cracked) { p.cracked = true; p.crumbleTimer = 0.5; }
+        if (p.kind === "cloud" && p.cloudActive) {
+          // start fading after step
+          setTimeout(() => { if (p.cloudActive) { p.cloudActive = false; p.cloudRespawn = 3; } }, 1000);
         }
       }
     }
+    void prevBottomDummy;
   }
 
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
     const spawnX = this.camX + W + rand(40, 200);
 
-    // Type pool by distance
     const pool: EnemyType[] = ["shooter", "shanker"];
     if (meters > 150) pool.push("brute");
     if (meters > 400) pool.push("shankerSwift", "shooterElite");
@@ -859,14 +1093,18 @@ export class Game {
     const base = stats[type];
     const flying = type === "bomber" || type === "rider";
     const baseY = flying ? randi(120, 240) : GROUND_Y - base.h;
+    const hpMul = this.diffEnemyHp();
 
     this.enemies.push({
       type, x: spawnX, y: baseY, vx: 0, vy: 0,
-      w: base.w, h: base.h, hp: base.hp, maxHp: base.hp,
+      w: base.w, h: base.h, hp: base.hp * hpMul, maxHp: base.hp * hpMul,
       onGround: !flying, facing: -1,
       fireCd: rand(0.6, 1.4), aiTimer: 0, targetDx: 0, hurtFlash: 0,
       burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
       flying, baseY,
+      jumpCd: 0, disabled: 0, grabbed: false,
+      thrown: false, throwVx: 0, throwVy: 0,
+      legPhase: 0, glintTimer: 0, dying: false,
     });
     if (meters > 500 && Math.random() < 0.3) this.spawnEnemy();
   }
@@ -875,145 +1113,197 @@ export class Game {
     this.enemies = this.enemies.filter(e => {
       if (e.x < this.camX - 300) return false;
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
-      const dx = (this.px + this.pw/2) - e.x;
-      e.facing = dx > 0 ? 1 : -1;
-      const dist = Math.abs(dx);
+      e.legPhase += dt * 10;
 
-      switch (e.type) {
-        case "shanker":
-          e.vx = Math.sign(dx) * 130;
-          break;
-        case "shankerSwift":
-          e.vx = Math.sign(dx) * 220;
-          // leap occasionally
-          if (e.onGround && Math.random() < 0.01 && dist < 200) { e.vy = -480; e.onGround = false; }
-          break;
-        case "shooter":
-          if (dist > 320) e.vx = Math.sign(dx) * 80;
-          else if (dist < 220) e.vx = -Math.sign(dx) * 60;
-          else e.vx = 0;
-          e.fireCd -= dt;
-          if (e.fireCd <= 0 && dist < 460) {
-            e.fireCd = rand(1.0, 1.8);
-            this.spawnEnemyBullet(e, 420, 8);
-          }
-          break;
-        case "shooterElite":
-          if (dist > 320) e.vx = Math.sign(dx) * 90;
-          else if (dist < 220) e.vx = -Math.sign(dx) * 70;
-          else e.vx = 0;
-          e.fireCd -= dt; e.burstCd -= dt;
-          if (e.burstLeft > 0 && e.burstCd <= 0) {
-            this.spawnEnemyBullet(e, 480, 10);
-            e.burstLeft--; e.burstCd = 0.12;
-          } else if (e.fireCd <= 0 && dist < 480) {
-            e.fireCd = rand(1.6, 2.4); e.burstLeft = 3; e.burstCd = 0;
-          }
-          break;
-        case "brute":
-          e.vx = Math.sign(dx) * 50;
-          e.fireCd -= dt;
-          if (e.fireCd <= 0 && dist < 380) {
-            e.fireCd = rand(1.6, 2.4);
-            for (let i = -1; i <= 1; i++) this.spawnEnemyBullet(e, 360, 12, i * 60);
-          }
-          break;
-        case "bruteHeavy":
-          e.vx = Math.sign(dx) * 35;
-          e.fireCd -= dt;
-          if (e.fireCd <= 0 && dist < 220 && e.onGround) {
-            e.fireCd = 3.0;
-            // ground pound shockwave
-            this.screenShake = Math.max(this.screenShake, 8);
-            for (let i = -2; i <= 2; i++) this.spawnEnemyBullet(e, 420, 16, i * 20);
-          }
-          break;
-        case "rider":
-          // hover-bike pass
-          e.vx = -260; // moves left across screen
-          e.fireCd -= dt;
-          if (e.fireCd <= 0 && dist < 600) {
-            e.fireCd = 0.8;
-            this.bullets.push({
-              x: e.x, y: e.y + e.h, vx: 0, vy: 200, dmg: 14, life: 4, friendly: false, r: 5, pierce: 0, color: "#ff8c42",
-            });
-          }
-          break;
-        case "bomber":
-          e.vx = -180;
-          e.y = e.baseY + Math.sin(this.weatherTime * 1.2 + e.x * 0.01) * 12;
-          e.fireCd -= dt;
-          if (e.fireCd <= 0 && dist < 500) {
-            e.fireCd = 1.2;
-            this.bullets.push({
-              x: e.x, y: e.y + e.h, vx: -60, vy: 80, dmg: 22, life: 4, friendly: false, r: 6, pierce: 0, color: "#ffb347",
-            });
-          }
-          break;
-        case "sniper":
-          e.vx = 0;
-          if (!e.charging && dist < 700) {
-            e.charging = true; e.chargeTime = 1.2;
-          }
-          if (e.charging) {
-            e.chargeTime -= dt;
-            if (e.chargeTime <= 0) {
-              this.spawnEnemyBullet(e, 1200, 35);
-              e.charging = false;
-              e.fireCd = 1.5;
+      // Death glint phase
+      if (e.dying) {
+        e.glintTimer -= dt;
+        return e.glintTimer > 0;
+      }
+
+      // If grabbed: lock above player, don't act
+      if (e.grabbed) {
+        e.x = this.px + this.pw/2;
+        e.y = this.py - e.h - 6;
+        return e.hp > 0;
+      }
+
+      // If thrown: arc + collide
+      if (e.thrown) {
+        e.throwVy += 1700 * dt;
+        e.x += e.throwVx * dt;
+        e.y += e.throwVy * dt;
+        if (e.y + e.h >= GROUND_Y) {
+          // Land — AoE damage
+          this.explode(e.x, e.y + e.h, 80, 90);
+          e.hp = 0;
+        }
+      } else {
+        if (e.disabled > 0) e.disabled -= dt;
+        if (e.jumpCd > 0) e.jumpCd -= dt;
+
+        const dx = (this.px + this.pw/2) - e.x;
+        e.facing = dx > 0 ? 1 : -1;
+        const dist = Math.abs(dx);
+        const dy = (this.py + this.ph/2) - (e.y + e.h/2);
+        const fireMul = this.diffEnemyFire();
+
+        switch (e.type) {
+          case "shanker":
+            e.vx = Math.sign(dx) * 130;
+            if (e.onGround && e.jumpCd <= 0 && dy < -30 && dist < 200) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
+            break;
+          case "shankerSwift":
+            e.vx = Math.sign(dx) * 220;
+            if (e.onGround && e.jumpCd <= 0 && (Math.random() < 0.02 || dy < -20) && dist < 220) { e.vy = -540; e.onGround = false; e.jumpCd = 0.9; }
+            break;
+          case "shooter":
+            // strafe in/out of optimal range
+            if (dist > 320) e.vx = Math.sign(dx) * 90;
+            else if (dist < 180) e.vx = -Math.sign(dx) * 90;
+            else e.vx = Math.sin(this.timeAlive * 2 + e.x * 0.01) * 50;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 460) {
+              e.fireCd = rand(1.0, 1.8) * fireMul;
+              this.spawnEnemyBullet(e, 420, 8);
             }
-          }
-          break;
-      }
+            if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.01) { e.vy = -480; e.onGround = false; e.jumpCd = 1.5; }
+            break;
+          case "shooterElite":
+            if (dist > 320) e.vx = Math.sign(dx) * 110;
+            else if (dist < 200) e.vx = -Math.sign(dx) * 100;
+            else e.vx = Math.sin(this.timeAlive * 3) * 60;
+            e.fireCd -= dt; e.burstCd -= dt;
+            if (e.burstLeft > 0 && e.burstCd <= 0) {
+              this.spawnEnemyBullet(e, 480, 10);
+              e.burstLeft--; e.burstCd = 0.12;
+            } else if (e.fireCd <= 0 && dist < 480) {
+              e.fireCd = rand(1.6, 2.4) * fireMul; e.burstLeft = 3; e.burstCd = 0;
+            }
+            if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.02) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
+            break;
+          case "brute":
+            e.vx = Math.sign(dx) * 60;
+            if (e.onGround && e.jumpCd <= 0 && dist < 80 && dy < -10) { e.vy = -560; e.onGround = false; e.jumpCd = 1.5; }
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 380) {
+              e.fireCd = rand(1.6, 2.4) * fireMul;
+              for (let i = -1; i <= 1; i++) this.spawnEnemyBullet(e, 360, 12, i * 60);
+            }
+            break;
+          case "bruteHeavy":
+            e.vx = Math.sign(dx) * 40;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 220 && e.onGround) {
+              e.fireCd = 3.0 * fireMul;
+              this.screenShake = Math.max(this.screenShake, 8);
+              for (let i = -2; i <= 2; i++) this.spawnEnemyBullet(e, 420, 16, i * 20);
+            }
+            break;
+          case "rider":
+            e.vx = -260;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 600) {
+              e.fireCd = 0.8 * fireMul;
+              this.bullets.push({
+                x: e.x, y: e.y + e.h, vx: 0, vy: 200, dmg: 14, life: 4, friendly: false, r: 5, pierce: 0, color: "#ff8c42",
+              });
+            }
+            break;
+          case "bomber":
+            e.vx = -180;
+            e.y = e.baseY + Math.sin(this.weatherTime * 1.2 + e.x * 0.01) * 12;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 500) {
+              e.fireCd = 1.2 * fireMul;
+              this.bullets.push({
+                x: e.x, y: e.y + e.h, vx: -60, vy: 80, dmg: 22, life: 4, friendly: false, r: 6, pierce: 0, color: "#ffb347",
+              });
+            }
+            break;
+          case "sniper":
+            e.vx = (Math.random() < 0.01) ? Math.sign(dx) * 80 : 0;
+            if (!e.charging && dist < 700) {
+              e.charging = true; e.chargeTime = 1.2 * fireMul;
+            }
+            if (e.charging) {
+              e.chargeTime -= dt;
+              if (e.chargeTime <= 0) {
+                this.spawnEnemyBullet(e, 1200, 35);
+                e.charging = false;
+                e.fireCd = 1.5;
+              }
+            }
+            break;
+        }
 
-      // === Separation: don't stick to player or each other
-      const distToP = Math.abs((this.px + this.pw/2) - e.x);
-      if (distToP < 36 && (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper")) {
-        // ranged enemies kite away from melee range
-        e.vx = -Math.sign(dx) * 160;
-      }
-      for (const o of this.enemies) {
-        if (o === e || o.flying !== e.flying) continue;
-        const sep = e.x - o.x;
-        if (Math.abs(sep) < 28 && Math.abs(e.y - o.y) < 30) {
-          e.vx += Math.sign(sep || 1) * 80 * dt * 60;
+        // Separation
+        for (const o of this.enemies) {
+          if (o === e || o.flying !== e.flying || o.dying) continue;
+          const sep = e.x - o.x;
+          if (Math.abs(sep) < 32 && Math.abs(e.y - o.y) < 30) {
+            e.vx += Math.sign(sep || 1) * 120 * dt * 60;
+          }
+        }
+
+        // Kite away from melee
+        const distToP = Math.abs((this.px + this.pw/2) - e.x);
+        if (distToP < 36 && (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper")) {
+          e.vx = -Math.sign(dx) * 200;
+        }
+        // Melee swipe
+        if ((e.type === "shooter" || e.type === "shooterElite") && distToP < 44 && e.fireCd <= 0.2) {
+          e.fireCd = 0.9;
+          if (Math.abs(e.y - this.py) < 50) this.damagePlayer(10 * this.diffEnemyDmg());
         }
       }
-      // Occasional melee swipe for ranged shooters when adjacent
-      if ((e.type === "shooter" || e.type === "shooterElite") && distToP < 44 && e.fireCd <= 0.2) {
-        e.fireCd = 0.9;
-        if (Math.abs(e.y - this.py) < 50) this.damagePlayer(10);
-      }
 
-      if (!e.flying) {
+      if (!e.flying && !e.thrown) {
         e.vy += 1700 * dt;
         e.y += e.vy * dt;
         if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
       }
-      e.x += e.vx * dt;
+      if (!e.thrown) e.x += e.vx * dt;
 
-      // Touch damage with cooldown so they can't spam
-      const touching = e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
+      // Touch damage
+      const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
                        e.y < this.py + this.ph && e.y + e.h > this.py;
-      if (touching) {
-        if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8);
-        else if (e.type === "rider") this.damagePlayer(15);
-        else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12);
+      if (touching && !e.thrown) {
+        const m = this.diffEnemyDmg();
+        if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
+        else if (e.type === "rider") this.damagePlayer(15 * m);
+        else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12 * m);
       }
-      return e.hp > 0;
+
+      if (e.hp <= 0 && !e.dying) {
+        e.dying = true;
+        e.glintTimer = 0.4;
+        this.kills++;
+        this.comboCount++; this.comboTimer = 3;
+        audio.play("kill");
+        this.dropLoot(e);
+        // glint particles
+        for (let i = 0; i < 8; i++) this.particles.push({
+          x: e.x, y: e.y + e.h/2, vx: rand(-260, 260), vy: rand(-220, -40),
+          life: 0.6, max: 0.6, color: "#ffffff", size: 3,
+        });
+      }
+      return e.hp > 0 || e.dying;
     });
+    if (this.grabbed && (!this.enemies.includes(this.grabbed) || this.grabbed.dying)) this.grabbed = null;
   }
 
   private spawnEnemyBullet(e: Enemy, speed: number, dmg: number, vyOffset = 0) {
     this.bullets.push({
       x: e.x, y: e.y + e.h * 0.4,
       vx: e.facing * speed, vy: vyOffset,
-      dmg, life: 1.5, friendly: false, r: 3, pierce: 0,
+      dmg: dmg * this.diffEnemyDmg(), life: 1.5, friendly: false, r: 3, pierce: 0,
       color: "#ff6a6a",
     });
   }
 
   private damageEnemy(e: Enemy, dmg: number) {
+    if (e.dying) return;
     e.hp -= dmg;
     e.hurtFlash = 0.12;
     this.totalDmg += dmg;
@@ -1023,16 +1313,6 @@ export class Game {
       x: e.x, y: e.y + e.h/2, vx: rand(-120, 120), vy: rand(-200, -40),
       life: 0.4, max: 0.4, color: "#ffd166", size: 2,
     });
-    if (e.hp <= 0) {
-      this.kills++;
-      this.comboCount++; this.comboTimer = 3;
-      audio.play("kill");
-      this.dropLoot(e);
-      for (let i = 0; i < 12; i++) this.particles.push({
-        x: e.x, y: e.y + e.h/2, vx: rand(-260, 260), vy: rand(-300, -40),
-        life: 0.7, max: 0.7, color: COLOR.bulletEnemy, size: 3,
-      });
-    }
   }
 
   private dropLoot(e: Enemy) {
@@ -1049,6 +1329,7 @@ export class Game {
   private explode(x: number, y: number, dmg: number, radius: number) {
     this.screenShake = Math.max(this.screenShake, 8);
     this.enemies.forEach(e => {
+      if (e.dying) return;
       const dx = e.x - x, dy = e.y - y;
       if (dx*dx + dy*dy < radius*radius) this.damageEnemy(e, dmg);
     });
@@ -1067,7 +1348,6 @@ export class Game {
     this.pHp -= actual;
     this.pInv = 0.4;
     this.screenShake = Math.max(this.screenShake, 6);
-    // Pace penalty: lose ~35% of momentum per hit, reset untouched timer
     this.untouchedTime = 0;
     this.momentum = Math.max(0, this.momentum - 0.35);
     this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (rebuild by avoiding damage)`);
@@ -1090,9 +1370,10 @@ export class Game {
   private emitStats() {
     const meters = this.worldX / PX_PER_METER;
     const rank = this.computeRank(meters);
+    const activeName = WEAPONS[this.inventory.ranged[this.inventory.activeRanged]].name.toUpperCase();
     const desc = this.descTimer > 0
       ? this.description
-      : (this.warning ? `! ${this.warning} !` : `${WEAPONS[this.inventory.loadout[this.inventory.active]].name.toUpperCase()} EQUIPPED  •  ${Math.floor(meters)}m  •  PACE ${this.paceMult.toFixed(2)}×  •  ♪ ${audio.currentTrackName()}`);
+      : (this.warning ? `! ${this.warning} !` : `${activeName} EQUIPPED  •  ${Math.floor(meters)}m  •  PACE ${this.paceMult.toFixed(2)}×  •  ♪ ${audio.currentTrackName()}`);
     this.onStatsChange({
       hp: this.pHp, maxHp: this.pMaxHp,
       ammo: this.ammo, grenades: this.grenades,
@@ -1112,6 +1393,12 @@ export class Game {
       description: desc,
       inventory: this.inventory,
       phase: this.phase,
+      difficulty: this.difficulty,
+      weather: this.weather,
+      cycleProgress: this.cycleTime / DAY_NIGHT_PERIOD,
+      parryWindow: this.parryWindow,
+      miscCharge: Math.max(this.miscACharge, this.miscBCharge) / 1.2,
+      grabbedHas: !!this.grabbed,
     });
   }
 
@@ -1127,6 +1414,9 @@ export class Game {
     return { label: "F", color: "text-[hsl(var(--rank-f))]" };
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   private render() {
     const ctx = this.ctx;
     ctx.imageSmoothingEnabled = false;
@@ -1138,32 +1428,38 @@ export class Game {
     }
     ctx.clearRect(0, 0, W, H);
 
+    // === Day/Night sky
+    const t = this.cycleTime / DAY_NIGHT_PERIOD; // 0..1
+    // 0 = sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight
+    const dayAmt = (Math.cos(t * Math.PI * 2) + 1) / 2; // 1 at noon-ish, 0 at midnight
+    const sky1 = lerpColor("#1a2342", "#6cb8ff", dayAmt);
+    const sky2 = lerpColor("#2a2050", "#c8d8ff", dayAmt);
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, COLOR.sky1);
-    grad.addColorStop(1, COLOR.sky2);
+    grad.addColorStop(0, sky1);
+    grad.addColorStop(1, sky2);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    for (let i = 0; i < 40; i++) {
-      const x = (i * 137 + this.camX * 0.05) % W;
-      const y = (i * 73) % 240;
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.fillRect(x, y, 2, 2);
+    // Stars at night
+    if (dayAmt < 0.5) {
+      ctx.globalAlpha = 1 - dayAmt * 2;
+      for (let i = 0; i < 60; i++) {
+        const x = (i * 137 + this.camX * 0.05) % W;
+        const y = (i * 73) % 240;
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fillRect(x, y, 2, 2);
+      }
+      ctx.globalAlpha = 1;
     }
-    for (let i = 0; i < 5; i++) {
-      const bx = (i * 220 + this.weatherTime * 30) % (W + 80) - 40;
-      const by = 80 + Math.sin(this.weatherTime + i) * 10;
-      ctx.fillStyle = "#0a0e1f";
-      ctx.fillRect(bx, by, 6, 2);
-      ctx.fillRect(bx - 3, by + 2, 4, 2);
-      ctx.fillRect(bx + 5, by + 2, 4, 2);
-    }
+
+    // Sun / Moon (top right area, with sword rays + infinity)
+    this.drawSunMoon(ctx, dayAmt);
 
     ctx.translate(shakeX, shakeY);
 
-    this.drawMountains(COLOR.mtnFar, 0.15, 360, 80);
-    this.drawMountains(COLOR.mtnMid, 0.35, 380, 110);
-    this.drawMountains(COLOR.mtnNear, 0.6, 410, 140);
+    this.drawMountains("#2c3a5e", 0.15, 360, 80);
+    this.drawMountains("#3a4a72", 0.35, 380, 110);
+    this.drawMountains("#4a5a82", 0.6, 410, 140);
 
     ctx.fillStyle = COLOR.ground;
     ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
@@ -1173,17 +1469,15 @@ export class Game {
     ctx.fillStyle = "#2a1a0a";
     for (let x = -tileOffset; x < W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 1, H - GROUND_Y);
 
-    // === Landmarks (safezones)
+    // Landmarks
     for (const l of this.landmarks) {
       const sx = l.x - this.camX;
       if (sx + l.w < 0 || sx > W) continue;
-      // Safezone glow
       ctx.fillStyle = "rgba(123,224,255,0.10)";
       ctx.fillRect(sx, GROUND_Y - 120, l.w, 120);
       ctx.strokeStyle = "rgba(123,224,255,0.6)";
       ctx.lineWidth = 1;
       ctx.strokeRect(sx, GROUND_Y - 120, l.w, 120);
-      // Building
       const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#8a5a3a";
       ctx.fillStyle = col;
       ctx.fillRect(sx + 30, GROUND_Y - 80, l.w - 60, 80);
@@ -1197,7 +1491,7 @@ export class Game {
       ctx.fillText(label, sx + 20, GROUND_Y - 96);
     }
 
-    // === World pickups along the road
+    // World pickups
     for (const p of this.worldPickups) {
       const sx = p.x - this.camX;
       if (sx < -20 || sx > W + 20) continue;
@@ -1221,16 +1515,13 @@ export class Game {
       }
     }
 
-
     // Platforms with variants
     for (const p of this.platforms) {
       const sx = p.x - this.camX;
       if (sx + p.w < 0 || sx > W) continue;
       const v = PLATFORM_VARIANTS[p.kind];
-      // crumble flicker
-      if (p.kind === "crumble" && p.cracked && Math.floor(this.weatherTime * 12) % 2 === 0) {
-        ctx.globalAlpha = 0.6;
-      }
+      if (p.kind === "crumble" && p.cracked && Math.floor(this.weatherTime * 12) % 2 === 0) ctx.globalAlpha = 0.6;
+      if (p.kind === "cloud") ctx.globalAlpha = p.cloudFade;
       ctx.fillStyle = v.bodyColor;
       ctx.fillRect(sx, p.y, p.w, p.h);
       ctx.fillStyle = v.topColor;
@@ -1238,7 +1529,6 @@ export class Game {
       ctx.fillStyle = v.edgeColor;
       ctx.fillRect(sx, p.y + p.h - 2, p.w, 2);
       ctx.globalAlpha = 1;
-      // Spike teeth
       if (p.kind === "spike") {
         ctx.fillStyle = "#ffd6d6";
         for (let i = 0; i < p.w; i += 8) {
@@ -1250,12 +1540,25 @@ export class Game {
           ctx.fill();
         }
       }
-      // Ice sheen
       if (p.kind === "ice") {
         ctx.fillStyle = "rgba(255,255,255,0.4)";
         ctx.fillRect(sx + 4, p.y + 1, Math.max(8, p.w * 0.3), 1);
       }
-      // Crumble cracks
+      if (p.kind === "bounce") {
+        ctx.fillStyle = "#cfffd0";
+        ctx.fillRect(sx + 2, p.y - 3, p.w - 4, 3);
+      }
+      if (p.kind === "conveyor") {
+        ctx.fillStyle = "#000";
+        const offset = Math.floor(this.weatherTime * 60 * p.conveyorDir) % 8;
+        for (let i = -offset; i < p.w; i += 8) {
+          ctx.fillRect(sx + i, p.y + 1, 4, 2);
+        }
+        // arrow
+        ctx.fillStyle = "#fff";
+        const ax = sx + p.w/2 + (p.conveyorDir > 0 ? 4 : -4);
+        ctx.fillRect(ax - 2, p.y + 6, 4, 2);
+      }
       if (p.kind === "crumble" && p.cracked) {
         ctx.strokeStyle = "#3a2010";
         ctx.lineWidth = 1;
@@ -1274,133 +1577,31 @@ export class Game {
       ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 3, p.y - 3, 2, 2);
     }
 
-    // Enemies (variant-aware)
+    // Enemies (humanoid rigs)
     for (const e of this.enemies) {
-      const sx = e.x - this.camX - e.w/2;
-      ctx.fillStyle = COLOR.shadow;
-      ctx.fillRect(sx + 2, e.y + 2, e.w, e.h);
-      const baseCol = ENEMY_COLOR[e.type];
-      ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
-      ctx.fillRect(sx, e.y, e.w, e.h - 4);
-      // Legs anim (ground enemies only)
-      if (!e.flying) {
-        const ph = Math.sin(this.animTime * 10 + e.x * 0.1);
-        const lOff = Math.max(0, ph) * 3;
-        const rOff = Math.max(0, -ph) * 3;
-        ctx.fillStyle = "#1a1a1a";
-        ctx.fillRect(sx + 4, e.y + e.h - 4 + lOff, 5, 4);
-        ctx.fillRect(sx + e.w - 9, e.y + e.h - 4 + rOff, 5, 4);
-      }
-      // Weapon for shooter variants
-      if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
-        ctx.fillStyle = "#222";
-        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 10, 3);
-        else ctx.fillRect(sx - 10, e.y + e.h * 0.45, 10, 3);
-      }
-      if (e.type === "shanker" || e.type === "shankerSwift") {
-        ctx.fillStyle = "#d8e2ff";
-        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.4, 8, 2);
-        else ctx.fillRect(sx - 8, e.y + e.h * 0.4, 8, 2);
-      }
-      // outline accents per variant
-      if (e.type === "shooterElite") {
-        ctx.fillStyle = "#fff"; ctx.fillRect(sx, e.y, e.w, 2); ctx.fillRect(sx, e.y + e.h - 2, e.w, 2);
-      } else if (e.type === "bruteHeavy") {
-        ctx.fillStyle = "#000"; ctx.fillRect(sx + 4, e.y + 4, e.w - 8, 4);
-      } else if (e.type === "rider") {
-        ctx.fillStyle = "#222"; ctx.fillRect(sx, e.y + e.h - 2, e.w, 4);
-        ctx.fillStyle = "#ffd166"; ctx.fillRect(sx + e.w - 6, e.y + 4, 2, 2);
-      } else if (e.type === "bomber") {
-        ctx.fillStyle = "#444"; ctx.fillRect(sx - 6, e.y + e.h/2, e.w + 12, 3);
-      } else if (e.type === "sniper") {
-        if (e.charging) {
-          ctx.strokeStyle = "rgba(255,60,60,0.7)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(sx + e.w/2, e.y + e.h * 0.4);
-          ctx.lineTo(sx + e.w/2 + e.facing * 800, e.y + e.h * 0.4);
-          ctx.stroke();
-        }
-      }
-      ctx.fillStyle = "#fff";
-      const eyeX = e.facing > 0 ? sx + e.w - 8 : sx + 4;
-      ctx.fillRect(eyeX, e.y + 8, 4, 4);
-      ctx.fillStyle = "#0008"; ctx.fillRect(sx, e.y - 8, e.w, 4);
-      ctx.fillStyle = COLOR.hpBar; ctx.fillRect(sx, e.y - 8, (e.hp / e.maxHp) * e.w, 4);
+      this.drawEnemy(e);
     }
 
+    // Bullets
     for (const b of this.bullets) {
       const sx = b.x - this.camX;
-      ctx.fillStyle = b.friendly ? b.color : COLOR.bulletEnemy;
+      ctx.fillStyle = b.color;
       ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      if (b.r >= 6) { ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 2, b.y - 2, 4, 4); }
     }
 
-    // Player (with walk anim + body parts)
-    const psx = this.px - this.camX;
-    ctx.fillStyle = COLOR.shadow;
-    ctx.fillRect(psx + 3, this.py + 3, this.pw, this.ph);
-    const flicker = this.pInv > 0 && Math.floor(this.pInv * 30) % 2 === 0;
-    // Legs (animated)
-    const legPhase = Math.sin(this.animTime * 12);
-    const legOffL = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
-    const legOffR = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
-    ctx.fillStyle = "#3a2a10";
-    ctx.fillRect(psx + 4, this.py + this.ph - 6 + legOffL, 6, 6);
-    ctx.fillRect(psx + this.pw - 10, this.py + this.ph - 6 + legOffR, 6, 6);
-    // Body
-    ctx.fillStyle = flicker ? "#fff" : COLOR.player;
-    ctx.fillRect(psx, this.py, this.pw, this.ph - 6);
-    // Head highlight
-    ctx.fillStyle = "#fde2a0";
-    ctx.fillRect(psx + 4, this.py + 2, this.pw - 8, 10);
-    ctx.fillStyle = COLOR.playerOut;
-    ctx.fillRect(psx, this.py, this.pw, 2);
-    ctx.fillRect(psx, this.py + this.ph - 8, this.pw, 2);
-    // Eye
-    ctx.fillStyle = "#000";
-    const faceX = this.pFacing > 0 ? psx + this.pw - 9 : psx + 5;
-    ctx.fillRect(faceX, this.py + 6, 4, 4);
-    // Arm carrying weapon (color reflects equipped)
-    const activeW = WEAPONS[this.inventory.loadout[this.inventory.active]];
-    const eqColor = activeW.color;
-    if (activeW.kind === "melee") {
-      // Melee swing arc
-      const swing = this.meleeSwing;
-      const ang = (this.pFacing > 0 ? 1 : -1) * (1 - swing) * Math.PI * 0.6 - Math.PI/2;
-      const cx = psx + this.pw/2;
-      const cy = this.py + this.ph * 0.45;
-      const len = 22;
-      const ex = cx + Math.cos(ang) * len * (this.pFacing > 0 ? 1 : -1);
-      const ey = cy + Math.sin(ang) * len;
-      ctx.strokeStyle = eqColor; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
-      if (swing > 0.1) {
-        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
-        ctx.stroke();
-      }
-    } else {
-      ctx.fillStyle = "#222";
-      if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.4, 12, 4);
-      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 12, 4);
-      ctx.fillStyle = eqColor;
-      if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.4, 2, 2);
-      else ctx.fillRect(psx - 12, this.py + this.ph * 0.4, 2, 2);
+    // Dash trail
+    for (const t of this.dashTrail) {
+      ctx.globalAlpha = t.life * 4 * 0.4;
+      ctx.fillStyle = "#7be0ff";
+      ctx.fillRect(t.x - this.camX, t.y, this.pw, this.ph);
     }
-    if (this.shieldActive) {
-      ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
-    }
-    if (this.odActive) {
-      ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
-      ctx.strokeRect(psx - 3, this.py - 3, this.pw + 6, this.ph + 6);
-    }
-    if (this.puInvincible > 0) {
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 26 + Math.sin(this.animTime*10)*2, 0, Math.PI*2); ctx.stroke();
-    }
+    ctx.globalAlpha = 1;
 
+    // Player (humanoid)
+    this.drawPlayer();
+
+    // Particles
     for (const p of this.particles) {
       const sx = p.x - this.camX;
       ctx.globalAlpha = p.life / p.max;
@@ -1410,7 +1611,7 @@ export class Game {
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // === Weather overlay (after world transforms restored, screen-space)
+    // Weather overlays
     if (this.weather === "rain" || this.weather === "storm") {
       ctx.strokeStyle = this.weather === "storm" ? "rgba(180,200,255,0.7)" : "rgba(180,200,255,0.5)";
       ctx.lineWidth = 1;
@@ -1430,24 +1631,301 @@ export class Game {
       ctx.fillStyle = "rgba(200,220,240,0.18)";
       ctx.fillRect(0, 0, W, H);
     }
+    if (this.weather === "fog") {
+      ctx.fillStyle = "rgba(220,220,230,0.35)";
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.weather === "windy") {
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      for (let i = 0; i < 30; i++) {
+        const y = (i * 19 + this.weatherTime * 80) % H;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y - 4); ctx.stroke();
+      }
+    }
     if (this.lightningFlash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${this.lightningFlash * 0.6})`;
       ctx.fillRect(0, 0, W, H);
     }
-    // Foresight: highlight ahead enemies
+    if (this.parryFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,180,${this.parryFlash * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+    }
     if (this.puForesight > 0) {
       ctx.strokeStyle = "rgba(167,139,250,0.7)"; ctx.lineWidth = 1;
       for (const e of this.enemies) {
+        if (e.dying) continue;
         const sx = e.x - this.camX - e.w/2;
         ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
       }
     }
 
-    // Pause/Inventory dim
+    // Dim if paused
     if (this.phase === "paused" || this.phase === "inventory") {
       ctx.fillStyle = "rgba(10,14,31,0.7)";
       ctx.fillRect(0, 0, W, H);
     }
+  }
+
+  private drawSunMoon(ctx: CanvasRenderingContext2D, dayAmt: number) {
+    // Position arcs across sky
+    const t = this.cycleTime / DAY_NIGHT_PERIOD;
+    const cx = W * 0.85;
+    const cy = 90 + Math.sin(t * Math.PI * 2 - Math.PI/2) * 30;
+    const isDay = dayAmt > 0.5;
+    const r = 26;
+    if (isDay) {
+      // Sun with sword rays + ∞
+      ctx.fillStyle = "#ffd84a";
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#ffea7a"; ctx.fillStyle = "#ffea7a"; ctx.lineWidth = 1;
+      // 8 sword rays
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2 + this.weatherTime * 0.2;
+        const x1 = cx + Math.cos(ang) * (r + 4);
+        const y1 = cy + Math.sin(ang) * (r + 4);
+        const x2 = cx + Math.cos(ang) * (r + 22);
+        const y2 = cy + Math.sin(ang) * (r + 22);
+        // sword shape: thin triangle
+        const px = -Math.sin(ang) * 3;
+        const py = Math.cos(ang) * 3;
+        ctx.beginPath();
+        ctx.moveTo(x1 + px, y1 + py);
+        ctx.lineTo(x1 - px, y1 - py);
+        ctx.lineTo(x2, y2);
+        ctx.closePath();
+        ctx.fill();
+        // hilt
+        ctx.fillStyle = "#a07020";
+        ctx.fillRect(x1 - 2, y1 - 2, 4, 4);
+        ctx.fillStyle = "#ffea7a";
+      }
+      // ∞ symbol in middle
+      this.drawInfinity(ctx, cx, cy, 10, "rgba(255,255,255,0.55)");
+    } else {
+      // Moon (crescent) with ∞
+      ctx.fillStyle = "#e8e8f0";
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = lerpColor("#1a2342", "#6cb8ff", dayAmt);
+      ctx.beginPath(); ctx.arc(cx + 8, cy - 4, r - 4, 0, Math.PI * 2); ctx.fill();
+      this.drawInfinity(ctx, cx - 4, cy + 2, 9, "rgba(120,140,200,0.7)");
+    }
+  }
+
+  private drawInfinity(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 60; i++) {
+      const a = (i / 60) * Math.PI * 2;
+      const x = cx + Math.cos(a) * size;
+      const y = cy + Math.sin(2 * a) * size * 0.4;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // === Humanoid sprite drawing
+  private drawPlayer() {
+    const ctx = this.ctx;
+    const psx = this.px - this.camX;
+    const psy = this.py;
+    const flicker = this.pInv > 0 && Math.floor(this.pInv * 30) % 2 === 0;
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(psx + 2, GROUND_Y - 2, this.pw, 3);
+
+    const legPhase = Math.sin(this.animTime * 12);
+    const lOff = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
+    const rOff = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
+
+    // Legs
+    ctx.fillStyle = "#3a2a10";
+    ctx.fillRect(psx + 6, psy + this.ph - 8 + lOff, 5, 8);
+    ctx.fillRect(psx + this.pw - 11, psy + this.ph - 8 + rOff, 5, 8);
+    // Boots
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(psx + 5, psy + this.ph - 2 + lOff, 7, 2);
+    ctx.fillRect(psx + this.pw - 12, psy + this.ph - 2 + rOff, 7, 2);
+
+    // Body (tunic)
+    ctx.fillStyle = flicker ? "#fff" : COLOR.player;
+    ctx.fillRect(psx + 4, psy + 14, this.pw - 8, this.ph - 22);
+    // Belt
+    ctx.fillStyle = COLOR.playerOut;
+    ctx.fillRect(psx + 4, psy + 24, this.pw - 8, 2);
+
+    // Head (skin)
+    ctx.fillStyle = "#fde2a0";
+    ctx.fillRect(psx + 8, psy + 6, this.pw - 16, 10);
+    // Eye
+    ctx.fillStyle = "#000";
+    const faceX = this.pFacing > 0 ? psx + this.pw - 11 : psx + 9;
+    ctx.fillRect(faceX, psy + 10, 2, 2);
+
+    // Hat (wide brim) with infinity sign
+    ctx.fillStyle = "#3a2a10";
+    ctx.fillRect(psx + 2, psy + 4, this.pw - 4, 3); // brim
+    ctx.fillRect(psx + 7, psy, this.pw - 14, 5);   // crown
+    // hat band
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(psx + 7, psy + 3, this.pw - 14, 1);
+    // ∞ on hat
+    this.drawInfinity(ctx, psx + this.pw/2, psy + 2, 4, "#fff7d6");
+
+    // Arm carrying weapon
+    const activeW = WEAPONS[this.inventory.ranged[this.inventory.activeRanged]];
+    ctx.fillStyle = "#fde2a0";
+    if (this.pFacing > 0) ctx.fillRect(psx + this.pw - 6, psy + 18, 4, 8);
+    else ctx.fillRect(psx + 2, psy + 18, 4, 8);
+    // Weapon
+    ctx.fillStyle = "#222";
+    if (this.pFacing > 0) ctx.fillRect(psx + this.pw, psy + 20, 12, 4);
+    else ctx.fillRect(psx - 12, psy + 20, 12, 4);
+    ctx.fillStyle = activeW.color;
+    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, psy + 20, 2, 2);
+    else ctx.fillRect(psx - 12, psy + 20, 2, 2);
+
+    // Melee swing arc
+    if (this.meleeSwing > 0) {
+      const swing = this.meleeSwing;
+      const cx = psx + this.pw/2;
+      const cy = psy + this.ph * 0.45;
+      const len = 26;
+      ctx.strokeStyle = this.parryFlash > 0 ? "#fff" : "#d8e2ff"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
+      ctx.stroke();
+      if (this.parryFlash > 0) {
+        // sparks
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(cx + this.pFacing * (len + i*3), cy - 4 + i*3, 2, 2);
+        }
+      }
+      void swing;
+    }
+
+    // Shield bubble
+    if (this.shieldActive) {
+      ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (this.odActive) {
+      ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
+      ctx.strokeRect(psx - 3, psy - 3, this.pw + 6, this.ph + 6);
+    }
+    if (this.puInvincible > 0) {
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(psx + this.pw/2, psy + this.ph/2, 26 + Math.sin(this.animTime*10)*2, 0, Math.PI*2); ctx.stroke();
+    }
+
+    // Parry "!" indicator
+    if (this.parryWindow > 0) {
+      ctx.fillStyle = "#ffd84a";
+      ctx.font = "bold 18px monospace";
+      ctx.fillText("!", psx + this.pw/2 - 3, psy - 14);
+    }
+    // Charge ring
+    const charge = Math.max(this.miscACharge, this.miscBCharge);
+    if (charge > 0.05) {
+      ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(psx + this.pw/2, psy - 18, 8, -Math.PI/2, -Math.PI/2 + (charge / 1.2) * Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  private drawEnemy(e: Enemy) {
+    const ctx = this.ctx;
+    const sx = e.x - this.camX - e.w/2;
+    // Death glint: bright flash + cross star
+    if (e.dying) {
+      const a = e.glintTimer / 0.4;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#fff";
+      const cx = sx + e.w/2, cy = e.y + e.h/2;
+      const len = (1 - a) * 30 + 6;
+      ctx.fillRect(cx - len, cy - 1, len*2, 2);
+      ctx.fillRect(cx - 1, cy - len, 2, len*2);
+      // 4 small stars
+      for (let i = 0; i < 4; i++) {
+        const ang = (i / 4) * Math.PI * 2;
+        ctx.fillRect(cx + Math.cos(ang) * len * 0.7, cy + Math.sin(ang) * len * 0.7, 3, 3);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const baseCol = ENEMY_COLOR[e.type];
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(sx + 2, GROUND_Y - 2, e.w, 3);
+
+    // Legs (humanoid for ground enemies)
+    if (!e.flying) {
+      const ph = Math.sin(e.legPhase + e.x * 0.1);
+      const lOff = Math.max(0, ph) * 3;
+      const rOff = Math.max(0, -ph) * 3;
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillRect(sx + 5, e.y + e.h - 8 + lOff, 5, 8);
+      ctx.fillRect(sx + e.w - 10, e.y + e.h - 8 + rOff, 5, 8);
+    }
+
+    // Body
+    ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
+    ctx.fillRect(sx + 3, e.y + 12, e.w - 6, e.h - 22);
+    // Head
+    ctx.fillStyle = "#e8c89a";
+    ctx.fillRect(sx + 6, e.y + 4, e.w - 12, 10);
+    // Eye
+    ctx.fillStyle = "#000";
+    const eyeX = e.facing > 0 ? sx + e.w - 9 : sx + 7;
+    ctx.fillRect(eyeX, e.y + 8, 2, 3);
+
+    // Type-specific accents
+    if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
+      ctx.fillStyle = "#222";
+      if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 12, 3);
+      else ctx.fillRect(sx - 12, e.y + e.h * 0.45, 12, 3);
+    }
+    if (e.type === "shanker" || e.type === "shankerSwift") {
+      // Hood
+      ctx.fillStyle = "#3a1a4a";
+      ctx.fillRect(sx + 4, e.y + 2, e.w - 8, 6);
+      // Dagger
+      ctx.fillStyle = "#d8e2ff";
+      if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.4, 8, 2);
+      else ctx.fillRect(sx - 8, e.y + e.h * 0.4, 8, 2);
+    }
+    if (e.type === "shooterElite") {
+      // Helmet
+      ctx.fillStyle = "#444"; ctx.fillRect(sx + 4, e.y + 2, e.w - 8, 5);
+    } else if (e.type === "brute" || e.type === "bruteHeavy") {
+      // bulky armor pad
+      ctx.fillStyle = "#000"; ctx.fillRect(sx + 2, e.y + 14, e.w - 4, 4);
+    } else if (e.type === "rider") {
+      // Bike base
+      ctx.fillStyle = "#222"; ctx.fillRect(sx, e.y + e.h - 4, e.w, 6);
+      ctx.fillStyle = "#ffd166"; ctx.fillRect(sx + e.w - 6, e.y + 4, 2, 2);
+    } else if (e.type === "bomber") {
+      // wings
+      ctx.fillStyle = "#444"; ctx.fillRect(sx - 6, e.y + e.h/2, e.w + 12, 3);
+    } else if (e.type === "sniper") {
+      if (e.charging) {
+        ctx.strokeStyle = "rgba(255,60,60,0.7)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx + e.w/2, e.y + e.h * 0.4);
+        ctx.lineTo(sx + e.w/2 + e.facing * 800, e.y + e.h * 0.4);
+        ctx.stroke();
+      }
+    }
+
+    // Disabled (grabbed) overlay
+    if (e.disabled > 0 || e.grabbed) {
+      ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
+    }
+
+    // HP bar
+    ctx.fillStyle = "#0008"; ctx.fillRect(sx, e.y - 8, e.w, 4);
+    ctx.fillStyle = COLOR.hpBar; ctx.fillRect(sx, e.y - 8, (e.hp / e.maxHp) * e.w, 4);
   }
 
   private drawMountains(color: string, parallax: number, baseY: number, height: number) {
@@ -1464,4 +1942,19 @@ export class Game {
     ctx.closePath();
     ctx.fill();
   }
+}
+
+// dummy referenced inside resolveCollisionsY to silence unused-var lint when inlined
+const prevBottomDummy: any = undefined;
+
+function lerpColor(a: string, b: string, t: number) {
+  const pa = parseHex(a), pb = parseHex(b);
+  const r = Math.round(pa[0] + (pb[0] - pa[0]) * t);
+  const g = Math.round(pa[1] + (pb[1] - pa[1]) * t);
+  const bl = Math.round(pa[2] + (pb[2] - pa[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+function parseHex(h: string): [number, number, number] {
+  const s = h.replace("#", "");
+  return [parseInt(s.slice(0,2), 16), parseInt(s.slice(2,4), 16), parseInt(s.slice(4,6), 16)];
 }

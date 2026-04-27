@@ -4,8 +4,12 @@ import { WEAPONS } from "@/game/weapons";
 export const Hud = ({ stats }: { stats: GameStats }) => {
   const hpPct = Math.max(0, (stats.hp / stats.maxHp) * 100);
   const odPct = stats.overdriveBar * 100;
-  const inv = stats.inventory ?? { loadout: ["pistol","smg","shotgun"], active: 0, owned: [], consumables: { medkit: 0, ammoPack: 0 }, augments: [] } as any;
-  const active = inv.active;
+  const inv: any = stats.inventory ?? { ranged: ["pistol","smg","shotgun","rifle","minigun","rocket"], melee: "knife", miscA: "grenade", miscB: "smoke", activeRanged: 0 };
+  const ranged = inv.ranged ?? [inv.loadout?.[0], inv.loadout?.[1], inv.loadout?.[2]];
+  const active = inv.activeRanged ?? inv.active ?? 0;
+  const meleeId = inv.melee ?? "knife";
+  const miscAId = inv.miscA ?? "grenade";
+  const miscBId = inv.miscB ?? "smoke";
 
   return (
     <div className="pointer-events-none absolute inset-0 pixel-text text-[10px] md:text-[11px]">
@@ -69,24 +73,43 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
         TOTAL DMG: {Math.floor(stats.totalDamage)} ● KILLS: {stats.kills} ● BOSSES: {stats.bossKills}
       </div>
 
-      {/* Hotbar */}
-      <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-2">
-        {inv.loadout.map((wid: any, i: number) => {
-          const w = WEAPONS[wid];
-          const isActive = i === active;
-          return (
-            <div
-              key={i}
-              className={`w-16 h-16 border-2 flex flex-col items-center justify-center ${isActive ? "border-[#ffd84a] bg-[#1a2342]/90 shadow-[0_0_12px_rgba(255,216,74,0.6)]" : "border-[#3a4a72] bg-[#0a0e1f]/80"}`}
-              style={{ color: w.color }}
-            >
-              <div className="text-[8px]">[{i + 1}]</div>
-              <div className="text-[9px] mt-1" style={{ color: w.color }}>{w.name.slice(0, 7).toUpperCase()}</div>
-              <div className="w-8 h-1.5 mt-1" style={{ background: w.color }} />
-            </div>
-          );
-        })}
+      {/* Hotbar — 6 ranged + 1 melee + 2 misc */}
+      <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-3 items-end">
+        <div className="flex gap-1.5">
+          {ranged.slice(0, 6).map((wid: any, i: number) => {
+            const w = WEAPONS[wid] ?? WEAPONS.pistol;
+            const isActive = i === active;
+            return (
+              <div key={i}
+                className={`w-12 h-14 border-2 flex flex-col items-center justify-center ${isActive ? "border-[#ffd84a] bg-[#1a2342]/90 shadow-[0_0_10px_rgba(255,216,74,0.6)]" : "border-[#3a4a72] bg-[#0a0e1f]/80"}`}>
+                <div className="text-[8px] text-[#fff7d6]">[{i + 1}]</div>
+                <div className="text-[8px] mt-0.5" style={{ color: w.color }}>{w.name.slice(0, 6).toUpperCase()}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="w-12 h-14 border-2 border-[#a83af0] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
+          <div className="text-[8px] text-[#fff7d6]">[L]</div>
+          <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[meleeId]?.color }}>{(WEAPONS[meleeId]?.name ?? "KNIFE").slice(0,6).toUpperCase()}</div>
+        </div>
+        <div className="flex gap-1.5">
+          <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
+            <div className="text-[8px] text-[#fff7d6]">[K]</div>
+            <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscAId]?.color }}>{(WEAPONS[miscAId]?.name ?? "GRENADE").slice(0,6).toUpperCase()}</div>
+          </div>
+          <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
+            <div className="text-[8px] text-[#fff7d6]">[O]</div>
+            <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscBId]?.color }}>{(WEAPONS[miscBId]?.name ?? "SMOKE").slice(0,6).toUpperCase()}</div>
+          </div>
+        </div>
       </div>
+
+      {/* Charge meter when throwing misc */}
+      {stats.miscCharge > 0.05 && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-40 h-2 bg-[#0a0e1f] border border-[#ffd84a]">
+          <div className="h-full bg-[#ffd84a]" style={{ width: `${Math.min(100, stats.miscCharge * 100)}%` }} />
+        </div>
+      )}
 
       {/* Bottom description bar — matches reference video */}
       <div className="absolute bottom-0 left-0 right-0 h-9 bg-[#0a0e1f]/90 border-t-2 border-[#ffd84a] flex items-center px-3">

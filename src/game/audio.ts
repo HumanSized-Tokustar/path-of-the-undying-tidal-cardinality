@@ -7,13 +7,18 @@ import sfxKill from "@/assets/audio/sfx_kill.mp3";
 import sfxDeath from "@/assets/audio/sfx_death.mp3";
 import sfxPurchase from "@/assets/audio/sfx_purchase.mp3";
 import sfxBoss from "@/assets/audio/sfx_boss.mp3";
+import sfxApplePay from "@/assets/audio/sfx_apple_pay.mp3";
+import sfxMiscThrow from "@/assets/audio/sfx_misc_throw.mp3";
+import sfxParry from "@/assets/audio/sfx_parry.mp3";
+import sfxSlash from "@/assets/audio/sfx_slash.mp3";
 
 export const MUSIC_TRACKS = [musicJetpack, musicGarfield, musicMinecraft, musicLego];
 export const MUSIC_NAMES = ["Jetpack Joyride", "Garfield", "Minecraft", "Lego Saloon"];
 
-type SfxKey = "fire" | "kill" | "death" | "purchase" | "boss";
+type SfxKey = "fire" | "kill" | "death" | "purchase" | "boss" | "applepay" | "miscthrow" | "parry" | "slash";
 const SFX_SRC: Record<SfxKey, string> = {
   fire: sfxFire, kill: sfxKill, death: sfxDeath, purchase: sfxPurchase, boss: sfxBoss,
+  applepay: sfxApplePay, miscthrow: sfxMiscThrow, parry: sfxParry, slash: sfxSlash,
 };
 
 class AudioManager {
@@ -21,7 +26,7 @@ class AudioManager {
   private trackIndex = 0;
   private musicVol = 0.18;
   private sfxVol = 0.55;
-  private sfxPools: Record<SfxKey, HTMLAudioElement[]> = { fire: [], kill: [], death: [], purchase: [], boss: [] };
+  private sfxPools: Record<SfxKey, HTMLAudioElement[]> = { fire: [], kill: [], death: [], purchase: [], boss: [], applepay: [], miscthrow: [], parry: [], slash: [] };
   private muted = false;
   private started = false;
 
