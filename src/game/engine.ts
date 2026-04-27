@@ -176,6 +176,9 @@ export class Game {
   private pJumps = 0; private maxJumps = 2;
   private pFacing: 1 | -1 = 1;
   private pHp = 123; private pMaxHp = 123;
+  private lives = 3;
+  private maxLives = 3;
+  private slowFall = 0; // antigrav: seconds remaining of slow-fall buff
   private pInv = 0;
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
   private dashTrail: { x:number; y:number; life:number }[] = [];
@@ -198,8 +201,6 @@ export class Game {
   // Grab/throw
   private grabbed: Enemy | null = null;
 
-  private untouchedTime = 0;
-  private momentum = 0;
   private paceMult = 1;
 
   private inventory: InventoryState = this.makeInventory();
@@ -216,12 +217,12 @@ export class Game {
   private totalDmg = 0;
   private kills = 0; private bossKills = 0;
   private coins = 100; private tokens = 1; private crystals = 0;
-  private ammo = 240; private grenades = 5;
+  private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
   private spawnTimer = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop) • SHIFT DASH • J FIRE • K MISC A • O MISC B • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
+  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
@@ -383,6 +384,8 @@ export class Game {
     const pm = this.diffPlayerMult();
     this.pMaxHp = 123 * pm;
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
+    this.lives = this.maxLives;
+    this.slowFall = 0;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
@@ -392,10 +395,10 @@ export class Game {
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
-    this.ammo = 240 * pm; this.grenades = 5 * pm;
+    this.ammo = 240 * pm; this.miscAmmo = 5 * pm;
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
-    this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
+    this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
     this.weather = "clear"; this.weatherSwitch = 8; this.rainDrops = []; this.lightningFlash = 0; this.nextLightning = 6;
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
@@ -518,18 +521,14 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Pacing
-    this.untouchedTime += dt;
-    if (this.untouchedTime > 3) this.momentum = Math.min(1, this.momentum + dt / 25);
+    // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
     const meters = this.worldX / PX_PER_METER;
-    // Base 15 m/s, +10 per 400m, cap 105
-    const stepIncrements = Math.floor(meters / 400);
+    const stepIncrements = Math.floor(meters / 300);
     const baseMs = Math.min(105, 15 + stepIncrements * 10);
-    const momentumMult = 1 + this.momentum * 0.15;
-    this.paceMult = (baseMs / 15) * momentumMult;
+    this.paceMult = baseMs / 15;
 
     // Movement: convert m/s to px/s
-    let speed = baseMs * (PX_PER_METER / 3) * momentumMult; // tuned: ~5px/m visual, scales smoothly
+    let speed = baseMs * (PX_PER_METER / 3);
     if (this.rolling) speed *= 1.6;
     if (this.odActive) speed *= 1.25;
     if (this.puSpeed > 0) speed *= 2;
@@ -590,8 +589,20 @@ export class Game {
 
     if (!this.pOnGround && this.input.down && !this.slamming) { this.slamming = true; this.pvy = 900; }
 
-    this.pvy += 1700 * dt;
-    if (this.pvy > 1200) this.pvy = 1200;
+    // Slow-fall (antigrav) reduces gravity & terminal velocity
+    if (this.slowFall > 0) this.slowFall -= dt;
+    const gravMul = this.slowFall > 0 ? 0.35 : 1;
+    this.pvy += 1700 * dt * gravMul;
+    const termV = this.slowFall > 0 ? 380 : 1200;
+    if (this.pvy > termV) this.pvy = termV;
+
+    // Ladder climbing — if overlapping a ladder platform and holding W/S
+    const ladder = this.findOverlappingLadder();
+    if (ladder) {
+      if (this.input.up)   { this.pvy = -260; this.pOnGround = false; }
+      else if (this.input.down) { this.pvy = 260; }
+      else                 { this.pvy *= 0.4; }
+    }
 
     this.px += this.pvx * dt;
     this.resolveCollisionsX();
