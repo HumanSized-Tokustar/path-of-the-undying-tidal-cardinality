@@ -7,13 +7,14 @@ export const PauseOverlay = ({ game }: { game: Game }) => {
         <h2 className="text-[#ffd84a] text-[28px] mb-6" style={{ textShadow: "3px 3px 0 #1a2342" }}>PAUSED</h2>
         <div className="text-[#fff7d6] text-[10px] space-y-1 mb-6 text-left">
           <div>WASD — Move</div>
-          <div>SPACE — Jump (×2)</div>
+          <div>SPACE — Jump (×2)  •  S+SPACE — Drop through</div>
           <div>SHIFT — Dash / Roll(+S)</div>
           <div>S (in air) — Ground Slam</div>
-          <div>J — Fire active weapon</div>
-          <div>K — Grenade  •  L — Knife</div>
-          <div>1 / 2 / 3 — Switch weapon  •  Wheel — Cycle</div>
-          <div>I — Shield  •  F — Overdrive</div>
+          <div>J — Fire ranged  •  L — Melee</div>
+          <div>K — Misc A  •  O — Misc B (hold to charge throw)</div>
+          <div>1-6 — Switch ranged  •  Wheel — Cycle</div>
+          <div>E — Parry  •  F — Grab/Throw enemy</div>
+          <div>I — Shield  •  G — Overdrive</div>
           <div>Y — Inventory  •  P — Pause</div>
         </div>
         <div className="flex flex-col gap-2">

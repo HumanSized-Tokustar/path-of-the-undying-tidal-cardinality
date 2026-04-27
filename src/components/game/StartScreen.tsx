@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { audio } from "@/game/audio";
 
-export const StartScreen = ({ onStart }: { onStart: () => void }) => {
+type Difficulty = "dunce" | "alright" | "son";
+
+export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; onDifficulty?: (d: Difficulty) => void }) => {
   const [view, setView] = useState<"main" | "settings" | "credits">("main");
   const [musicVol, setMusicVol] = useState(audio.getMusicVolume());
   const [sfxVol, setSfxVol] = useState(audio.getSfxVolume());
+  const [diff, setDiff] = useState<Difficulty>("alright");
+  const setD = (d: Difficulty) => { setDiff(d); onDifficulty?.(d); };
 
   return (
     <div className="absolute inset-0 grid place-items-center bg-background/85 pixel-text">
@@ -20,8 +24,19 @@ export const StartScreen = ({ onStart }: { onStart: () => void }) => {
               <Btn onClick={() => setView("settings")}>⚙ SETTINGS</Btn>
               <Btn onClick={() => setView("credits")}>★ CREDITS</Btn>
             </div>
+            <div className="mt-4">
+              <div className="text-[9px] text-foreground/70 mb-1">DIFFICULTY</div>
+              <div className="flex gap-1 justify-center">
+                {(["dunce","alright","son"] as Difficulty[]).map(d => (
+                  <button key={d} onClick={() => setD(d)}
+                    className={`px-2 py-1 border-2 text-[9px] ${diff === d ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-border text-foreground/70"}`}>
+                    {d === "dunce" ? "DUNCE" : d === "alright" ? "ALRIGHT" : "SON 😭"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-6 text-[8px] text-foreground/50 leading-relaxed">
-              WASD MOVE · SPACE JUMP×2 · SHIFT DASH · J FIRE<br />K MISC · L MELEE · I SHIELD · F OVERDRIVE · Y INVENTORY
+              WASD MOVE · SPACE JUMP×2 · SHIFT DASH · J FIRE<br />K/O MISC · L MELEE · E PARRY · F GRAB · G OVERDRIVE · Y INV
             </div>
           </>
         )}

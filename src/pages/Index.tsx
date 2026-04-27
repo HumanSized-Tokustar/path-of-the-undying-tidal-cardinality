@@ -24,6 +24,7 @@ const Index = () => {
   }, []);
 
   const handleStart = () => { audio.init(); gameRef.current?.start(); };
+  const handleDifficulty = (d: any) => { gameRef.current?.setDifficulty(d); };
   const handleRestart = () => { gameRef.current?.goToMenu(); };
 
   return (
@@ -40,7 +41,7 @@ const Index = () => {
       </div>
 
       {(phase === "playing" || phase === "paused" || phase === "inventory") && stats && <Hud stats={stats} />}
-      {phase === "menu" && <StartScreen onStart={handleStart} />}
+      {phase === "menu" && <StartScreen onStart={handleStart} onDifficulty={handleDifficulty} />}
       {phase === "dead" && stats && <DeathScreen stats={stats} onRestart={handleRestart} />}
       {phase === "paused" && gameRef.current && <PauseOverlay game={gameRef.current} />}
       {phase === "inventory" && gameRef.current && stats && <InventoryOverlay game={gameRef.current} stats={stats} />}
