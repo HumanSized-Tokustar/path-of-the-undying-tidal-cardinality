@@ -558,6 +558,36 @@ class Game:
             self.parry_flash = 0.25
             self.parry_window = 0
 
+        # V grab (press) / throw (release) — hold to charge for further/harder throw
+        if pygame.K_v in pressed_set and self.grabbed is None:
+            best, best_d = None, 70
+            for e in self.enemies:
+                if e["dying"]: continue
+                d = math.hypot(e["x"] - cx, e["y"] - cy)
+                if d < best_d: best, best_d = e, d
+            if best is not None:
+                best["grabbed"] = True
+                best["disabled"] = 99
+                self.grabbed = best
+        if self.grabbed is not None:
+            # Lock to player while held
+            self.grabbed["x"] = self.px + self.pw/2
+            self.grabbed["y"] = self.py - self.grabbed["h"] - 6
+            if keys[pygame.K_v]:
+                self.grab_charge = min(1.5, self.grab_charge + dt)
+            else:
+                c = self.grab_charge / 1.5
+                e = self.grabbed
+                e["grabbed"] = False
+                e["disabled"] = 0
+                e["thrown"] = True
+                e["throw_vx"] = self.p_facing * (520 + 700 * c)
+                e["throw_vy"] = -360 - 220 * c
+                e["throw_dmg"] = 60 + int(140 * c)
+                e["throw_radius"] = 80 + int(60 * c)
+                self.grabbed = None
+                self.grab_charge = 0
+
         # Bullets (chrono slows enemy bullets)
         slow_b = 0.5 if self.pu_chrono > 0 else 1
         new_bullets = []
