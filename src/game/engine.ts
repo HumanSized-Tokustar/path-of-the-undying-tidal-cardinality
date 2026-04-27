@@ -227,7 +227,7 @@ export class Game {
   private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
+  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH (S+SHIFT ROLL) • F FIRE • R MELEE • Q/E THROW MISC • C PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • P PAUSE";
   private spawnTier = 0;        // grows by 1 per 111m for the tide system
   private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
   private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
