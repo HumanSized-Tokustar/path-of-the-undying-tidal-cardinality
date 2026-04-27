@@ -395,7 +395,7 @@ export class Game {
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
-    this.ammo = 240 * pm; this.miscAmmo = 5 * pm;
+    this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.paceMult = 1;
