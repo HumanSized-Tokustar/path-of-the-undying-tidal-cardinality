@@ -693,10 +693,10 @@ export class Game {
     });
 
     // === Landmarks (safezones)
-    const meters = Math.floor(this.worldX / PX_PER_METER);
+    const metersNow = Math.floor(this.worldX / PX_PER_METER);
     // Spawn next landmark roughly every 1000m (main+ally), 7777m (shady) — predicted positions
     if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
-      const baseM = meters + 200;
+      const baseM = metersNow + 200;
       const nextMain = Math.ceil(baseM / 1000) * 1000;
       const lx = nextMain * PX_PER_METER;
       if (!this.landmarks.find(l => Math.abs(l.x - lx) < 200)) {
