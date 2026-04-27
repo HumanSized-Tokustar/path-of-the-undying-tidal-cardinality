@@ -1282,8 +1282,9 @@ export class Game {
         e.x += e.throwVx * dt;
         e.y += e.throwVy * dt;
         if (e.y + e.h >= GROUND_Y) {
-          // Land — AoE damage
-          this.explode(e.x, e.y + e.h, 80, 90);
+          const dmg = (e as any).throwDmg ?? 80;
+          const radius = (e as any).throwRadius ?? 90;
+          this.explode(e.x, e.y + e.h, dmg, radius);
           e.hp = 0;
         }
       } else {
