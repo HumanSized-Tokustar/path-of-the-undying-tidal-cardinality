@@ -71,7 +71,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
 
       {/* Hotbar */}
       <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-2">
-        {stats.inventory.loadout.map((wid, i) => {
+        {inv.loadout.map((wid: any, i: number) => {
           const w = WEAPONS[wid];
           const isActive = i === active;
           return (
