@@ -899,7 +899,10 @@ export class Game {
 
     // Deploy weapons (medkit) — fire on press
     if ((isA ? this.input.miscAPressed : this.input.miscBPressed) && w.deploy && (this as any)[cdRef] <= 0) {
+      // Deploy items also pull from the unified misc pool
+      if (this.miscAmmo <= 0) { this.flashDescription("OUT OF MISC"); return; }
       (this as any)[cdRef] = w.fireCd;
+      this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       if (w.id === "medkit") this.useMedkit(); // direct heal
       else if (w.id === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
@@ -933,6 +936,7 @@ export class Game {
     }
     // Release: throw
     if (releasedKey && (this as any)[cdRef] <= 0 && !w.deploy) {
+      if (this.miscAmmo <= 0) { (this as any)[chargeRef] = 0; this.flashDescription("OUT OF MISC"); return; }
       const charge = clamp((this as any)[chargeRef] / 1.2, 0, 1);
       (this as any)[chargeRef] = 0;
       (this as any)[cdRef] = w.fireCd;
@@ -946,7 +950,7 @@ export class Game {
         color: w.color,
         kind: w.id === "molotov" ? "molotov" : "normal",
       });
-      if (wid === "grenade") this.grenades = Math.max(0, this.grenades - 1);
+      this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       audio.play("miscthrow");
       this.flashDescription(`THROW MISC — ${w.name} (${Math.round(charge*100)}% charge)`);
     }
