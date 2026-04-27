@@ -1281,7 +1281,27 @@ export class Game {
       ctx.fillRect(sx + 2, e.y + 2, e.w, e.h);
       const baseCol = ENEMY_COLOR[e.type];
       ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
-      ctx.fillRect(sx, e.y, e.w, e.h);
+      ctx.fillRect(sx, e.y, e.w, e.h - 4);
+      // Legs anim (ground enemies only)
+      if (!e.flying) {
+        const ph = Math.sin(this.animTime * 10 + e.x * 0.1);
+        const lOff = Math.max(0, ph) * 3;
+        const rOff = Math.max(0, -ph) * 3;
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillRect(sx + 4, e.y + e.h - 4 + lOff, 5, 4);
+        ctx.fillRect(sx + e.w - 9, e.y + e.h - 4 + rOff, 5, 4);
+      }
+      // Weapon for shooter variants
+      if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
+        ctx.fillStyle = "#222";
+        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 10, 3);
+        else ctx.fillRect(sx - 10, e.y + e.h * 0.45, 10, 3);
+      }
+      if (e.type === "shanker" || e.type === "shankerSwift") {
+        ctx.fillStyle = "#d8e2ff";
+        if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.4, 8, 2);
+        else ctx.fillRect(sx - 8, e.y + e.h * 0.4, 8, 2);
+      }
       // outline accents per variant
       if (e.type === "shooterElite") {
         ctx.fillStyle = "#fff"; ctx.fillRect(sx, e.y, e.w, 2); ctx.fillRect(sx, e.y + e.h - 2, e.w, 2);
