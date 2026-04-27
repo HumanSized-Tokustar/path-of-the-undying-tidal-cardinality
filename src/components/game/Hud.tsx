@@ -4,6 +4,8 @@ import { WEAPONS } from "@/game/weapons";
 export const Hud = ({ stats }: { stats: GameStats }) => {
   const hpPct = Math.max(0, (stats.hp / stats.maxHp) * 100);
   const odPct = stats.overdriveBar * 100;
+  const miscCount = (stats as any).miscAmmo ?? stats.grenades ?? 0;
+  const lives = (stats as any).lives ?? 3;
   const inv: any = stats.inventory ?? { ranged: ["pistol","smg","shotgun","rifle","minigun","rocket"], melee: "knife", miscA: "grenade", miscB: "smoke", activeRanged: 0 };
   const ranged = inv.ranged ?? [inv.loadout?.[0], inv.loadout?.[1], inv.loadout?.[2]];
   const active = inv.activeRanged ?? inv.active ?? 0;
@@ -28,8 +30,14 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
         />
         <div className="flex gap-2 text-[#ffd84a] mt-1">
           <span>AMMO {stats.ammo}</span>
-          <span>● GREN {stats.grenades}</span>
+          <span>● MISC {miscCount}</span>
           <span>● DASH {stats.dashCharges}/2</span>
+        </div>
+        <div className="flex gap-1 mt-1">
+          <span className="text-[9px] text-[#fff7d6] mr-1">LIVES</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <span key={i} className="text-[12px]" style={{ color: i < lives ? "#ff5a5a" : "#3a4a72", textShadow: i < lives ? "0 0 6px rgba(255,90,90,0.7)" : "none" }}>♥</span>
+          ))}
         </div>
       </div>
 
