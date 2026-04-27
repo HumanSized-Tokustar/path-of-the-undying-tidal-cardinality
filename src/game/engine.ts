@@ -1390,6 +1390,39 @@ export class Game {
     ctx.globalAlpha = 1;
     ctx.restore();
 
+    // === Weather overlay (after world transforms restored, screen-space)
+    if (this.weather === "rain" || this.weather === "storm") {
+      ctx.strokeStyle = this.weather === "storm" ? "rgba(180,200,255,0.7)" : "rgba(180,200,255,0.5)";
+      ctx.lineWidth = 1;
+      for (const d of this.rainDrops) {
+        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y + 8); ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(20,20,40,0.25)";
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.weather === "snow") {
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      for (let i = 0; i < 60; i++) {
+        const x = (i * 53 + this.weatherTime * 30) % W;
+        const y = (i * 31 + this.weatherTime * 60) % H;
+        ctx.fillRect(x, y, 2, 2);
+      }
+      ctx.fillStyle = "rgba(200,220,240,0.18)";
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.lightningFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.lightningFlash * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    // Foresight: highlight ahead enemies
+    if (this.puForesight > 0) {
+      ctx.strokeStyle = "rgba(167,139,250,0.7)"; ctx.lineWidth = 1;
+      for (const e of this.enemies) {
+        const sx = e.x - this.camX - e.w/2;
+        ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
+      }
+    }
+
     // Pause/Inventory dim
     if (this.phase === "paused" || this.phase === "inventory") {
       ctx.fillStyle = "rgba(10,14,31,0.7)";
