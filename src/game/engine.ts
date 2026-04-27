@@ -829,20 +829,37 @@ export class Game {
     this.updatePlatforms(dt);
     this.updateEnemies(dt);
 
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 && this.enemiesSpawned < 100) {
-      this.spawnEnemy();
-      this.enemiesSpawned++;
-      // Rate ramps: start ~0.4 enemies/sec, +2/sec per 111m traveled
-      const rate = 0.4 + 2 * Math.floor(meters / 111);
-      const interval = 1 / Math.max(0.2, rate);
-      // small jitter so spawns don't feel mechanical
-      this.spawnTimer = interval * rand(0.85, 1.15);
-      if (this.difficulty === "son" && this.enemiesSpawned < 100) {
+    // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
+    // Every 5th tier increase shouts "THE TIDE IS RISING".
+    {
+      const newTier = Math.floor(meters / 111);
+      if (newTier > this.spawnTier) {
+        const tiersGained = newTier - this.spawnTier;
+        this.spawnTier = newTier;
+        this.spawnAllowance = Math.min(100, this.spawnAllowance + 5 * tiersGained);
+        for (let i = 0; i < tiersGained; i++) {
+          this.tideMessageCount++;
+          if (this.tideMessageCount % 5 === 0) {
+            this.tideMsgText = "THE TIDE IS RISING";
+            this.tideMsgTimer = 3.5;
+            this.screenShake = Math.max(this.screenShake, 8);
+          }
+        }
+      }
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
         this.spawnEnemy();
         this.enemiesSpawned++;
+        // Pace: faster rate as the tier grows. Start gentle ~0.5/s, ramp linearly.
+        const rate = 0.5 + 0.35 * this.spawnTier;
+        const interval = 1 / Math.max(0.2, rate);
+        this.spawnTimer = interval * rand(0.85, 1.15);
+        if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
+          this.spawnEnemy(); this.enemiesSpawned++;
+        }
       }
     }
+    if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
 
     while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
       this.spawnPlatformAt(this.lastPlatformX() + rand(140, 280));
