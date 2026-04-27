@@ -300,11 +300,14 @@ export class Game {
   }
 
   // Multipliers (enemy stats)
-  // SON: smarter (faster reactions/fire) and 2× damage
-  private diffEnemyHp()   { return this.difficulty === "dunce" ? 0.7 : this.difficulty === "son" ? 1.6 : 1; }
-  private diffEnemyDmg()  { return this.difficulty === "dunce" ? 0.6 : this.difficulty === "son" ? 2.0 : 1; }
-  private diffEnemyFire() { return this.difficulty === "dunce" ? 1.4 : this.difficulty === "son" ? 0.55 : 1; }
-  private diffSmart()     { return this.difficulty === "son" ? 1 : 0; } // 0..1 smartness boost
+  // DUNCE: weaker, slower, dumber. SON: smarter, faster, 2× damage.
+  private diffEnemyHp()    { return this.difficulty === "dunce" ? 0.5 : this.difficulty === "son" ? 1.6 : 1; }
+  private diffEnemyDmg()   { return this.difficulty === "dunce" ? 0.4 : this.difficulty === "son" ? 2.0 : 1; }
+  private diffEnemyFire()  { return this.difficulty === "dunce" ? 1.7 : this.difficulty === "son" ? 0.55 : 1; }
+  private diffEnemySpeed() { return this.difficulty === "dunce" ? 0.55: this.difficulty === "son" ? 1.15 : 1; }
+  private diffSmart()      { return this.difficulty === "son" ? 1 : 0; } // 0..1 smartness boost
+  // Player starter stat multiplier (DUNCE = 2× starter HP/ammo/grenades)
+  private diffPlayerMult() { return this.difficulty === "dunce" ? 2 : 1; }
 
   private attachInput() {
     window.addEventListener("keydown", this.onKeyDown);
@@ -375,6 +378,9 @@ export class Game {
   }
   reset() {
     this.px = 200; this.py = GROUND_Y - this.ph; this.pvx = 0; this.pvy = 0;
+    // DUNCE: double player starter stats
+    const pm = this.diffPlayerMult();
+    this.pMaxHp = 123 * pm;
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
@@ -384,8 +390,8 @@ export class Game {
     this.comboTimer = 0; this.comboCount = 0;
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
-    this.coins = 100; this.tokens = 1; this.crystals = 0;
-    this.ammo = 240; this.grenades = 5;
+    this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
+    this.ammo = 240 * pm; this.grenades = 5 * pm;
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
@@ -884,8 +890,26 @@ export class Game {
       (this as any)[cdRef] = w.fireCd;
       if (w.id === "medkit") this.useMedkit(); // direct heal
       else if (w.id === "smoke") {
-        // deploy smoke at feet
-        for (let i = 0; i < 30; i++) this.particles.push({ x: this.px + this.pw/2, y: this.py + this.ph, vx: rand(-30,30), vy: rand(-60,-10), life: 2, max: 2, color: "#cfcfcf", size: 4, gravity: -10 });
+        // FLASHBANG: bright flash + stun all enemies in large radius
+        const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+        this.parryFlash = Math.max(this.parryFlash, 0.4);
+        this.screenShake = Math.max(this.screenShake, 6);
+        for (const e of this.enemies) {
+          if (e.dying || e.thrown) continue;
+          const d = Math.hypot(e.x - cx, e.y - cy);
+          if (d < 360) {
+            // Bosses get reduced stun
+            const isBoss = (e as any).boss === true || e.maxHp > 400;
+            e.disabled = Math.max(e.disabled, isBoss ? 0.8 : 2.5);
+            e.fireCd = Math.max(e.fireCd, isBoss ? 0.6 : 2.0);
+          }
+        }
+        // Particle burst
+        for (let i = 0; i < 40; i++) this.particles.push({
+          x: cx, y: cy, vx: rand(-300,300), vy: rand(-260,-20),
+          life: 0.8, max: 0.8, color: i%2 ? "#fff8c2" : "#ffffff", size: 4,
+        });
+        this.flashDescription("FLASHBANG — enemies stunned");
       }
       audio.play("miscthrow");
       return;
@@ -921,17 +945,25 @@ export class Game {
   // === Parry
   private updateParry(dt: number) {
     if (this.parryWindow > 0) { this.parryWindow -= dt; if (this.parryWindow <= 0) this.parryWindow = 0; return; }
-    // Scan for incoming threats
+    const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+    // Scan for incoming projectiles
     for (const b of this.bullets) {
       if (b.friendly) continue;
-      const dx = b.x - (this.px + this.pw/2);
-      const dy = b.y - (this.py + this.ph/2);
+      const dx = b.x - cx, dy = b.y - cy;
       const d = Math.hypot(dx, dy);
       if (d < 90) {
-        // is closing?
         const closing = (b.vx * -dx + b.vy * -dy) > 0;
         if (closing) { this.parryWindow = 0.35; return; }
       }
+    }
+    // Scan for nearby melee threats (close enemies that touch-damage)
+    for (const e of this.enemies) {
+      if (e.dying || e.disabled > 0 || e.thrown) continue;
+      const isMelee = e.type === "shanker" || e.type === "shankerSwift" || e.type === "rider" ||
+                      e.type === "brute" || e.type === "bruteHeavy";
+      if (!isMelee) continue;
+      const dx = e.x - cx, dy = e.y - cy;
+      if (Math.hypot(dx, dy) < 70) { this.parryWindow = 0.35; return; }
     }
   }
   private tryParry() {
@@ -951,6 +983,18 @@ export class Game {
           b.vx = (dx/d) * sp; b.vy = (dy/d) * sp;
         } else { b.vx = -b.vx; b.vy = -b.vy; }
         b.color = "#ffd84a";
+        hit++;
+      }
+    }
+    // Stun & knock back melee enemies in front of the player
+    for (const e of this.enemies) {
+      if (e.dying || e.thrown) continue;
+      const dx = e.x - cx, dy = e.y - cy;
+      if (Math.hypot(dx, dy) < 80) {
+        e.disabled = Math.max(e.disabled, 1.2);
+        e.vx = Math.sign(dx || 1) * 320;
+        e.vy = -260;
+        e.hp -= 15;
         hit++;
       }
     }
@@ -1272,12 +1316,33 @@ export class Game {
         }
       }
 
+      const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
-        e.vy += 1700 * dt;
+        e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
         if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
+        // Land on platform tops (enemies can sometimes reach platforms)
+        if (e.vy > 0) {
+          for (const p of this.platforms) {
+            const v = PLATFORM_VARIANTS[p.kind];
+            if (v.hazardSpikes) continue;
+            if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w) {
+              const top = p.y;
+              const prevBottom = e.y + e.h - e.vy * dt;
+              if (prevBottom <= top + 2 && e.y + e.h >= top) {
+                e.y = top - e.h; e.vy = 0; e.onGround = true;
+                if (v.bounce && Math.random() < 0.5) e.vy = -520 * v.bounce;
+                break;
+              }
+            }
+          }
+        }
+        // Occasional jump toward player platform
+        if (e.onGround && e.jumpCd <= 0 && Math.random() < 0.008 * espd) {
+          e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
+        }
       }
-      if (!e.thrown) e.x += e.vx * dt;
+      if (!e.thrown) e.x += e.vx * dt * espd;
 
       // Touch damage
       const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
@@ -1357,6 +1422,8 @@ export class Game {
     if (this.inSafeZone) return;
     if (this.puInvincible > 0) return;
     if (this.pInv > 0) return;
+    // Parry negates incoming damage entirely (incl. melee)
+    if (this.parryFlash > 0) return;
     let actual = dmg;
     if (this.shieldActive) actual *= 0.05;
     this.pHp -= actual;
@@ -1897,17 +1964,38 @@ export class Game {
     ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
     ctx.fillRect(sx + 3, e.y + 12, e.w - 6, e.h - 22);
     // Body shading (left strip)
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
     ctx.fillRect(sx + 3, e.y + 12, 2, e.h - 22);
+    // Body highlight (right strip)
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    ctx.fillRect(sx + e.w - 5, e.y + 12, 2, e.h - 22);
+    // Shoulder pads
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(sx + 2, e.y + 12, e.w - 4, 3);
+    // Chest plate (V stripe)
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(sx + e.w/2 - 1, e.y + 14, 2, 8);
     // Belt
     ctx.fillStyle = "#1a0a05";
     ctx.fillRect(sx + 3, e.y + e.h - 14, e.w - 6, 2);
+    // Belt buckle
+    ctx.fillStyle = "#7a5a2a";
+    ctx.fillRect(sx + e.w/2 - 2, e.y + e.h - 14, 4, 2);
+    // Arms
+    ctx.fillStyle = baseCol;
+    ctx.fillRect(sx + 1, e.y + 15, 3, e.h - 28);
+    ctx.fillRect(sx + e.w - 4, e.y + 15, 3, e.h - 28);
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(sx + 1, e.y + 15, 1, e.h - 28);
     // Head
     ctx.fillStyle = "#e8c89a";
     ctx.fillRect(sx + 6, e.y + 4, e.w - 12, 10);
     // Head shading
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
     ctx.fillRect(sx + 6, e.y + 4, 2, 10);
+    // Jaw shadow
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(sx + 6, e.y + 12, e.w - 12, 2);
     // Eyes (red glow)
     ctx.fillStyle = "#ff3030";
     const eyeX = e.facing > 0 ? sx + e.w - 9 : sx + 7;
