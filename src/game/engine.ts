@@ -35,6 +35,8 @@ const COLOR = {
   token: "#7be0ff",
   crystal: "#d97bff",
 };
+const COLOR_PLAYER_HI = "#7ce896";   // tunic highlight
+const COLOR_PLAYER_LO = "#2a7a3a";   // tunic mid-shadow
 
 type EnemyType =
   | "shooter" | "shooterElite"
@@ -66,6 +68,8 @@ interface Input {
   overdrivePressed: boolean;       // G
   parryPressed: boolean;           // E
   grabPressed: boolean;            // F
+  grab: boolean;                   // held for charged throw
+  grabReleased: boolean;
   inventoryPressed: boolean;       // Y
   pausePressed: boolean;           // P
   slotPressed: boolean[]; // 1..6
@@ -223,7 +227,13 @@ export class Game {
   private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH • J FIRE • K/O THROW MISC • L MELEE • E PARRY • F GRAB • G OVERDRIVE • I SHIELD • 1-6 SLOTS • Y INV • P PAUSE";
+  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH (S+SHIFT ROLL) • F FIRE • R MELEE • Q/E THROW MISC • C PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • P PAUSE";
+  private spawnTier = 0;        // grows by 1 per 111m for the tide system
+  private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
+  private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
+  private tideMsgTimer = 0;     // overlay timer for the tide banner
+  private tideMsgText = "";
+  private grabCharge = 0;       // seconds F is held to charge a throw (0..1.5)
   private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
@@ -272,6 +282,7 @@ export class Game {
       shield: false, shieldPressed: false,
       overdrivePressed: false,
       parryPressed: false, grabPressed: false,
+      grab: false, grabReleased: false,
       inventoryPressed: false, pausePressed: false,
       slotPressed: [false,false,false,false,false,false],
       wheelDelta: 0,
@@ -329,7 +340,7 @@ export class Game {
   };
   private onKeyDown = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","j","k","l","i","f","g","y","p","e","o","h","r","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
+    if (["w","a","s","d"," ","f","r","q","e","c","v","x","g","tab","p","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
     switch (k) {
@@ -339,15 +350,15 @@ export class Game {
       case "s": this.input.down = true; break;
       case " ": this.input.jump = true; this.input.jumpPressed = true; break;
       case "shift": this.input.dash = true; this.input.dashPressed = true; break;
-      case "j": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "k": this.input.miscA = true; this.input.miscAPressed = true; break;
-      case "o": this.input.miscB = true; this.input.miscBPressed = true; break;
-      case "l": this.input.melee = true; this.input.meleePressed = true; break;
-      case "i": this.input.shield = true; this.input.shieldPressed = true; break;
+      case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
+      case "q": this.input.miscA = true; this.input.miscAPressed = true; break;
+      case "e": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "r": this.input.melee = true; this.input.meleePressed = true; break;
+      case "x": this.input.shield = true; this.input.shieldPressed = true; break;
       case "g": this.input.overdrivePressed = true; break;
-      case "e": this.input.parryPressed = true; break;
-      case "f": this.input.grabPressed = true; break;
-      case "y": this.input.inventoryPressed = true; break;
+      case "c": this.input.parryPressed = true; break;
+      case "v": this.input.grab = true; this.input.grabPressed = true; break;
+      case "tab": this.input.inventoryPressed = true; break;
       case "p": this.input.pausePressed = true; break;
       case "1": case "2": case "3": case "4": case "5": case "6":
         this.input.slotPressed[parseInt(k) - 1] = true; break;
@@ -363,11 +374,12 @@ export class Game {
       case "s": this.input.down = false; break;
       case " ": this.input.jump = false; break;
       case "shift": this.input.dash = false; break;
-      case "j": this.input.fireR = false; break;
-      case "k": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "o": this.input.miscB = false; this.input.miscBReleased = true; break;
-      case "l": this.input.melee = false; break;
-      case "i": this.input.shield = false; break;
+      case "f": this.input.fireR = false; break;
+      case "q": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "e": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "r": this.input.melee = false; break;
+      case "x": this.input.shield = false; break;
+      case "v": this.input.grab = false; this.input.grabReleased = true; break;
     }
   };
 
@@ -399,6 +411,9 @@ export class Game {
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
     this.enemiesSpawned = 0;
+    this.spawnTier = 0; this.spawnAllowance = 5;
+    this.tideMessageCount = 0; this.tideMsgTimer = 0; this.tideMsgText = "";
+    this.grabCharge = 0;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
@@ -551,7 +566,13 @@ export class Game {
 
     // Dash (with i-frames)
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
-      if (this.input.down && this.pOnGround) { this.rolling = true; this.rollTime = 0.5; }
+      if (this.input.down && this.pOnGround) {
+        this.rolling = true;
+        this.rollTime = 0.56;          // 2× dash duration
+        this.pInv = Math.max(this.pInv, 0.56); // i-frames whole roll
+        this.dashCharges--;
+        if (this.dashRecharge <= 0) this.dashRecharge = 2;
+      }
       else {
         this.dashTime = 0.28; // longer dash
         this.pInv = Math.max(this.pInv, 0.28); // i-frames whole dash
@@ -565,7 +586,24 @@ export class Game {
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
-    if (this.rolling) { this.rollTime -= dt; this.pvx = this.pFacing * speed * 1.6; if (this.rollTime <= 0) this.rolling = false; }
+    if (this.rolling) {
+      this.rollTime -= dt;
+      this.pvx = this.pFacing * speed * 1.8;
+      // Knock enemies in path away
+      const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
+      for (const e of this.enemies) {
+        if (e.dying || e.thrown || e.grabbed) continue;
+        const dx = e.x - cx, dy = e.y - cy;
+        if (Math.abs(dx) < 36 && Math.abs(dy) < 30) {
+          e.vx = this.pFacing * 520;
+          e.vy = -360;
+          e.disabled = Math.max(e.disabled, 0.8);
+          this.damageEnemy(e, 12);
+          for (let i = 0; i < 4; i++) this.spawnPuff(e.x, e.y + e.h/2, "#cfe");
+        }
+      }
+      if (this.rollTime <= 0) this.rolling = false;
+    }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
       if (this.dashRecharge <= 0 && this.dashCharges < 2) {
@@ -709,16 +747,30 @@ export class Game {
       this.tryParry();
     }
 
-    // F = grab/throw
-    if (this.input.grabPressed) {
+    // V = grab (press) / throw (release with charge)
+    if (this.input.grabPressed && !this.grabbed) {
       this.input.grabPressed = false;
-      this.handleGrabThrow();
+      this.handleGrabThrow(0); // attempt grab
+    }
+    if (this.grabbed) {
+      if (this.input.grab) {
+        this.grabCharge = Math.min(1.5, this.grabCharge + dt);
+      }
+      if (this.input.grabReleased || this.input.grabPressed) {
+        const c = this.grabCharge / 1.5;
+        this.grabCharge = 0;
+        this.input.grabPressed = false;
+        this.handleGrabThrow(c);
+      }
+    } else {
+      this.grabCharge = 0;
     }
 
     this.input.jumpPressed = false; this.input.dashPressed = false;
     this.input.fireRPressed = false; this.input.miscAPressed = false; this.input.miscBPressed = false;
     this.input.miscAReleased = false; this.input.miscBReleased = false;
     this.input.meleePressed = false; this.input.shieldPressed = false;
+    this.input.grabReleased = false;
     this.input.overdrivePressed = false;
 
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
@@ -780,20 +832,37 @@ export class Game {
     this.updatePlatforms(dt);
     this.updateEnemies(dt);
 
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 && this.enemiesSpawned < 100) {
-      this.spawnEnemy();
-      this.enemiesSpawned++;
-      // Rate ramps: start ~0.4 enemies/sec, +2/sec per 111m traveled
-      const rate = 0.4 + 2 * Math.floor(meters / 111);
-      const interval = 1 / Math.max(0.2, rate);
-      // small jitter so spawns don't feel mechanical
-      this.spawnTimer = interval * rand(0.85, 1.15);
-      if (this.difficulty === "son" && this.enemiesSpawned < 100) {
+    // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
+    // Every 5th tier increase shouts "THE TIDE IS RISING".
+    {
+      const newTier = Math.floor(meters / 111);
+      if (newTier > this.spawnTier) {
+        const tiersGained = newTier - this.spawnTier;
+        this.spawnTier = newTier;
+        this.spawnAllowance = Math.min(100, this.spawnAllowance + 5 * tiersGained);
+        for (let i = 0; i < tiersGained; i++) {
+          this.tideMessageCount++;
+          if (this.tideMessageCount % 5 === 0) {
+            this.tideMsgText = "THE TIDE IS RISING";
+            this.tideMsgTimer = 3.5;
+            this.screenShake = Math.max(this.screenShake, 8);
+          }
+        }
+      }
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
         this.spawnEnemy();
         this.enemiesSpawned++;
+        // Pace: faster rate as the tier grows. Start gentle ~0.5/s, ramp linearly.
+        const rate = 0.5 + 0.35 * this.spawnTier;
+        const interval = 1 / Math.max(0.2, rate);
+        this.spawnTimer = interval * rand(0.85, 1.15);
+        if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
+          this.spawnEnemy(); this.enemiesSpawned++;
+        }
       }
     }
+    if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
 
     while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
       this.spawnPlatformAt(this.lastPlatformX() + rand(140, 280));
@@ -1034,17 +1103,22 @@ export class Game {
   }
 
   // === Grab/Throw
-  private handleGrabThrow() {
+  private handleGrabThrow(charge: number = 0) {
     if (this.grabbed) {
       // Throw it
       const e = this.grabbed;
       e.grabbed = false;
       e.disabled = 0;
       e.thrown = true;
-      e.throwVx = this.pFacing * 600;
-      e.throwVy = -380;
+      const vBase = 520;
+      const vBoost = 700 * charge; // up to ~1220 px/s when fully charged
+      e.throwVx = this.pFacing * (vBase + vBoost);
+      e.throwVy = -360 - 220 * charge;
+      // Stash bonus damage for landing explosion (read in updateEnemies)
+      (e as any).throwDmg = 60 + Math.round(140 * charge);
+      (e as any).throwRadius = 80 + Math.round(60 * charge);
       this.grabbed = null;
-      this.flashDescription("THROW ENEMY");
+      this.flashDescription(`THROW ENEMY — ${Math.round(charge * 100)}% charge`);
       audio.play("miscthrow");
     } else {
       // Find nearest non-boss enemy in range
@@ -1074,10 +1148,12 @@ export class Game {
   private spawnPlatformAt(x: number) {
     if (Math.random() < 0.5) return;
     const meters = this.worldX / PX_PER_METER;
-    const kind = pickPlatformKind(meters);
+    let kind = pickPlatformKind(meters);
+    // Ladders aren't standalone platforms — they get attached to a base.
+    if (kind === "ladder") kind = "stone";
     const w = randi(80, 180);
     const y = randi(280, 400);
-    this.platforms.push({
+    const base: Platform = {
       x, y, w, h: 16,
       kind,
       cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
@@ -1085,7 +1161,29 @@ export class Game {
       horizontal: Math.random() < 0.5,
       conveyorDir: Math.random() < 0.5 ? 1 : -1,
       cloudFade: 1, cloudActive: true, cloudRespawn: 0,
-    });
+    };
+    this.platforms.push(base);
+
+    // ~30% chance: attach a climbable ladder to one side of the base platform
+    // running from the platform top down to the ground.
+    if (kind === "stone" || kind === "floating" || kind === "crumble" || kind === "ice" || kind === "moving") {
+      if (Math.random() < 0.3 && y < GROUND_Y - 40) {
+        const onLeft = Math.random() < 0.5;
+        const lw = 12;
+        const lx = onLeft ? base.x - lw : base.x + base.w;
+        const ly = base.y;
+        const lh = GROUND_Y - ly;
+        this.platforms.push({
+          x: lx, y: ly, w: lw, h: lh,
+          kind: "ladder",
+          cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
+          baseX: lx, baseY: ly, phase: 0,
+          horizontal: false,
+          conveyorDir: 1,
+          cloudFade: 1, cloudActive: true, cloudRespawn: 0,
+        });
+      }
+    }
   }
 
   private updatePlatforms(dt: number) {
@@ -1125,6 +1223,7 @@ export class Game {
     for (const p of this.platforms) {
       if (p.falling) continue;
       const v = PLATFORM_VARIANTS[p.kind];
+      if (p.kind === "ladder") continue; // ladders don't have a landable top
       if (p.kind === "cloud" && (!p.cloudActive || p.cloudFade < 0.4)) continue;
       // Only land if falling and feet were above the top last frame
       if (this.dropThrough > 0) continue;
@@ -1194,7 +1293,7 @@ export class Game {
       thrown: false, throwVx: 0, throwVy: 0,
       legPhase: 0, glintTimer: 0, dying: false,
     });
-    if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < 100) {
+    if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
       this.enemiesSpawned++;
     }
@@ -1228,8 +1327,9 @@ export class Game {
         e.x += e.throwVx * dt;
         e.y += e.throwVy * dt;
         if (e.y + e.h >= GROUND_Y) {
-          // Land — AoE damage
-          this.explode(e.x, e.y + e.h, 80, 90);
+          const dmg = (e as any).throwDmg ?? 80;
+          const radius = (e as any).throwRadius ?? 90;
+          this.explode(e.x, e.y + e.h, dmg, radius);
           e.hp = 0;
         }
       } else {
@@ -1354,6 +1454,17 @@ export class Game {
 
       const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
+        // Climb ladders if overlapping one and player is higher than the enemy
+        let onLadder = false;
+        for (const p of this.platforms) {
+          if (p.kind !== "ladder") continue;
+          if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w &&
+              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = true; break; }
+        }
+        if (onLadder && this.py + this.ph < e.y + 4) {
+          e.vy = -150;
+          e.onGround = false;
+        }
         e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
         if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
@@ -1362,6 +1473,7 @@ export class Game {
           for (const p of this.platforms) {
             const v = PLATFORM_VARIANTS[p.kind];
             if (v.hazardSpikes) continue;
+            if (p.kind === "ladder") continue;
             if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w) {
               const top = p.y;
               const prevBottom = e.y + e.h - e.vy * dt;
@@ -1818,17 +1930,20 @@ export class Game {
         ctx.stroke();
       }
       if (p.kind === "ladder") {
-        // Draw rails + rungs going up from platform top
-        ctx.fillStyle = "#3a2010";
-        const railL = sx + 4, railR = sx + p.w - 6;
-        for (let yy = p.y - 80; yy < p.y + p.h; yy += 4) {
-          ctx.fillRect(railL, yy, 2, 3);
-          ctx.fillRect(railR, yy, 2, 3);
-        }
+        // Vertical ladder attached to the side of a base platform
+        ctx.clearRect(sx, p.y, p.w, p.h); // we don't want the body block
+        // Rails
         ctx.fillStyle = "#5a3010";
-        for (let yy = p.y - 76; yy < p.y + p.h; yy += 8) {
-          ctx.fillRect(railL + 2, yy, p.w - 12, 2);
+        ctx.fillRect(sx + 1, p.y, 2, p.h);
+        ctx.fillRect(sx + p.w - 3, p.y, 2, p.h);
+        // Rungs
+        ctx.fillStyle = "#c08a40";
+        for (let yy = p.y + 4; yy < p.y + p.h - 2; yy += 8) {
+          ctx.fillRect(sx + 2, yy, p.w - 4, 2);
         }
+        // Faint glow on top to show climb-up zone
+        ctx.fillStyle = "rgba(255,232,180,0.25)";
+        ctx.fillRect(sx, p.y - 2, p.w, 2);
       }
       if (p.kind === "jumppad") {
         // pulsing arrow
@@ -1934,6 +2049,29 @@ export class Game {
       ctx.fillStyle = `rgba(255,255,180,${this.parryFlash * 0.6})`;
       ctx.fillRect(0, 0, W, H);
     }
+    // === Tide warning banner
+    if (this.tideMsgTimer > 0 && this.tideMsgText) {
+      const t = clamp(this.tideMsgTimer / 3.5, 0, 1);
+      const pulse = 0.7 + 0.3 * Math.sin(this.weatherTime * 8);
+      ctx.save();
+      ctx.globalAlpha = t;
+      // Banner backdrop
+      ctx.fillStyle = "rgba(10,30,60,0.55)";
+      ctx.fillRect(0, 110, W, 70);
+      ctx.strokeStyle = `rgba(123,224,255,${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 110, W, 70);
+      // Title text
+      ctx.fillStyle = "#7be0ff";
+      ctx.font = "bold 30px monospace";
+      const txt = this.tideMsgText;
+      const tw = ctx.measureText(txt).width;
+      ctx.fillText(txt, (W - tw) / 2, 152);
+      // Glow underline
+      ctx.fillStyle = `rgba(255,255,255,${pulse * 0.6})`;
+      ctx.fillRect((W - tw) / 2, 158, tw, 1);
+      ctx.restore();
+    }
     if (this.puChrono > 0) {
       // Purple time-warp tint
       ctx.fillStyle = "rgba(167,139,250,0.10)";
@@ -2020,6 +2158,42 @@ export class Game {
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.fillRect(psx + 2, GROUND_Y - 2, this.pw, 3);
 
+    // Spinning roll: draw player as a tumbling ball with motion lines
+    if (this.rolling) {
+      const cx = psx + this.pw / 2;
+      const cy = psy + this.ph - 14;
+      const r = 16;
+      const spin = this.animTime * 22 * this.pFacing;
+      ctx.fillStyle = COLOR.playerOut;
+      ctx.beginPath(); ctx.arc(cx, cy, r + 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = flicker ? "#fff" : COLOR.player;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = COLOR_PLAYER_HI;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(spin) * 4, cy + Math.sin(spin) * 4, r - 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Yellow buckle dot orbiting
+      ctx.fillStyle = COLOR.playerBuckle;
+      const bx = cx + Math.cos(spin * 1.4) * (r - 5);
+      const by = cy + Math.sin(spin * 1.4) * (r - 5);
+      ctx.fillRect(bx - 2, by - 2, 4, 4);
+      // Hat brim flickering through the spin
+      ctx.fillStyle = "#3a2a10";
+      ctx.fillRect(cx - r + 2, cy + Math.sin(spin) * 6, r * 2 - 4, 2);
+      // Motion blur lines behind
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      for (let i = 1; i <= 4; i++) {
+        const ox = -this.pFacing * (6 + i * 5);
+        ctx.beginPath();
+        ctx.moveTo(cx + ox, cy - 6 + i);
+        ctx.lineTo(cx + ox - this.pFacing * 10, cy - 6 + i);
+        ctx.stroke();
+      }
+      if (Math.random() < 0.4) this.spawnPuff(this.px + this.pw/2, GROUND_Y - 4, "#cfe");
+      return;
+    }
+
     const legPhase = Math.sin(this.animTime * 12);
     const lOff = this.pOnGround ? Math.max(0, legPhase) * 4 : 2;
     const rOff = this.pOnGround ? Math.max(0, -legPhase) * 4 : 2;
@@ -2036,9 +2210,16 @@ export class Game {
     // Body (green tunic)
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
     ctx.fillRect(psx + 4, psy + 14, this.pw - 8, this.ph - 22);
-    // Tunic shading
-    ctx.fillStyle = COLOR.playerOut;
-    ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+    // Tunic shading (left dark / right highlight)
+    if (!flicker) {
+      ctx.fillStyle = COLOR.playerOut;
+      ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+      ctx.fillStyle = COLOR_PLAYER_HI;
+      ctx.fillRect(psx + this.pw - 6, psy + 14, 2, this.ph - 22);
+      // Mid stitch
+      ctx.fillStyle = COLOR_PLAYER_LO;
+      ctx.fillRect(psx + this.pw/2 - 1, psy + 16, 2, this.ph - 26);
+    }
     // Belt (dark)
     ctx.fillStyle = "#1a0a05";
     ctx.fillRect(psx + 4, psy + 24, this.pw - 8, 2);

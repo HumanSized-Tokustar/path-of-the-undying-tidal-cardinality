@@ -190,6 +190,17 @@ class Game:
         self.time_alive = 0
         self.spawn_timer = 3.5
         self.enemies_spawned = 0
+        # --- Tide spawn system ---
+        self.spawn_tier = 0          # int(meters / 111)
+        self.spawn_allowance = 5     # caps at 100
+        self.tide_msg_count = 0
+        self.tide_msg_timer = 0
+        self.tide_msg_text = ""
+        # --- Roll & charged grab ---
+        self.rolling = False
+        self.roll_time = 0
+        self.grabbed = None          # reference to enemy dict
+        self.grab_charge = 0
         self.weather = "clear"; self.weather_switch = 8.0
         self.cycle_time = 0
         self.pace_mult = 1.0
@@ -222,16 +233,34 @@ class Game:
         if random.random() < 0.5: return
         meters = self.world_x / PX_PER_METER
         kind = pick_platform_kind(meters)
+        # Ladders aren't standalone — convert to stone here, then maybe attach a ladder beside.
+        if kind == "ladder":
+            kind = "stone"
         w = random.randint(80, 180)
         y = random.randint(280, 400)
-        self.platforms.append(dict(
+        base = dict(
             x=x, y=y, w=w, h=16, kind=kind,
             cracked=False, crumble_timer=0, falling=False, fall_vy=0,
             base_x=x, base_y=y, phase=random.random()*math.pi*2,
             horizontal=random.random()<0.5,
             conveyor_dir=1 if random.random()<0.5 else -1,
             cloud_fade=1.0, cloud_active=True, cloud_respawn=0,
-        ))
+        )
+        self.platforms.append(base)
+        # ~30% chance: attach a climbable side-ladder from platform top to ground.
+        if kind in ("stone","floating","crumble","ice","moving") and y < GROUND_Y - 40 and random.random() < 0.3:
+            on_left = random.random() < 0.5
+            lw = 12
+            lx = x - lw if on_left else x + w
+            ly = y
+            lh = GROUND_Y - ly
+            self.platforms.append(dict(
+                x=lx, y=ly, w=lw, h=lh, kind="ladder",
+                cracked=False, crumble_timer=0, falling=False, fall_vy=0,
+                base_x=lx, base_y=ly, phase=0,
+                horizontal=False, conveyor_dir=1,
+                cloud_fade=1.0, cloud_active=True, cloud_respawn=0,
+            ))
 
     def find_overlapping_ladder(self):
         for p in self.platforms:
@@ -274,6 +303,8 @@ class Game:
             flying=flying, base_y=base_y,
             jump_cd=0, disabled=0, dying=False, glint=0,
             leg_phase=random.random()*math.pi*2, hurt_flash=0,
+            grabbed=False, thrown=False, throw_vx=0, throw_vy=0,
+            throw_dmg=80, throw_radius=90,
         ))
 
     # ---- Damage helpers ----
@@ -321,7 +352,7 @@ class Game:
         w = WEAPONS[wid]
         cd_attr = "fire_cd_misc_a" if is_a else "fire_cd_misc_b"
         ch_attr = "misc_a_charge"  if is_a else "misc_b_charge"
-        key = pygame.K_k if is_a else pygame.K_o
+        key = pygame.K_q if is_a else pygame.K_e
         held = keys[key]
         # Deploy
         if key in pressed_set and w["deploy"] and getattr(self, cd_attr) <= 0:
@@ -390,15 +421,35 @@ class Game:
         elif keys[pygame.K_d]: self.p_facing = 1; self.pvx = speed
         else: self.pvx = 0
 
-        # Dash
-        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0:
-            self.dash_time = 0.28
-            self.p_inv = max(self.p_inv, 0.28)
-            self.dash_charges -= 1
-            if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Dash / Roll (S+SHIFT)
+        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
+            if keys[pygame.K_s] and self.p_on_ground:
+                self.rolling = True
+                self.roll_time = 0.56          # 2× dash duration
+                self.p_inv = max(self.p_inv, 0.56)
+                self.dash_charges -= 1
+                if self.dash_recharge <= 0: self.dash_recharge = 2
+            else:
+                self.dash_time = 0.28
+                self.p_inv = max(self.p_inv, 0.28)
+                self.dash_charges -= 1
+                if self.dash_recharge <= 0: self.dash_recharge = 2
         if self.dash_time > 0:
             self.pvx = self.p_facing * speed * 3.4
             self.dash_time -= dt
+        if self.rolling:
+            self.roll_time -= dt
+            self.pvx = self.p_facing * speed * 1.8
+            # Knock enemies in path
+            for e in self.enemies:
+                if e["dying"]: continue
+                if abs(e["x"] - (self.px+self.pw/2)) < 36 and abs(e["y"] - (self.py+self.ph/2)) < 30:
+                    e["vx"] = self.p_facing * 520
+                    e["vy"] = -360
+                    e["disabled"] = max(e["disabled"], 0.8)
+                    self.damage_enemy(e, 12)
+            if self.roll_time <= 0:
+                self.rolling = False
         if self.dash_recharge > 0:
             self.dash_recharge -= dt
             if self.dash_recharge <= 0 and self.dash_charges < 2:
@@ -437,6 +488,7 @@ class Game:
         if self.pvy > 0:
             for p in self.platforms:
                 v = PLATFORM_VARIANTS[p["kind"]]
+                if p["kind"] == "ladder": continue
                 if (self.px + self.pw > p["x"] and self.px < p["x"]+p["w"] and
                     self.py + self.ph >= p["y"] and self.py + self.ph - self.pvy*0.02 <= p["y"] + 4):
                     self.py = p["y"] - self.ph
@@ -454,8 +506,8 @@ class Game:
         if self.pvx > 0: self.world_x += self.pvx * dt
         self.cam_x = max(0, self.px - W * 0.35)
 
-        # Shield
-        if pygame.K_i in pressed_set and self.shield_cd <= 0:
+        # Shield (X)
+        if pygame.K_x in pressed_set and self.shield_cd <= 0:
             self.shield_active = True; self.shield_time = 5; self.shield_cd = 6
         if self.shield_active:
             self.shield_time -= dt
@@ -478,8 +530,8 @@ class Game:
         for attr in ("pu_damage","pu_speed","pu_invincible","pu_chrono"):
             if getattr(self, attr) > 0: setattr(self, attr, getattr(self, attr) - dt)
 
-        # J fire
-        if keys[pygame.K_j] and self.fire_cd_r <= 0:
+        # F fire (ranged)
+        if keys[pygame.K_f] and self.fire_cd_r <= 0:
             wid = self.inventory["ranged"][self.inventory["active_ranged"]]
             w = WEAPONS[wid]
             if w["kind"] == "ranged" and self.ammo >= w["ammo"]:
@@ -496,8 +548,8 @@ class Game:
                         r=7 if wid=="rocket" else 4, pierce=w["pierce"], color=w["color"], grenade=False,
                     ))
 
-        # L melee
-        if pygame.K_l in pressed_set and self.fire_cd_m <= 0:
+        # R melee
+        if pygame.K_r in pressed_set and self.fire_cd_m <= 0:
             w = WEAPONS[self.inventory["melee"]]
             self.fire_cd_m = w["cd"]; self.melee_swing = 1
             dmg = w["dmg"] * (2 if self.od_active else 1) * (2 if self.pu_damage > 0 else 1)
@@ -510,7 +562,7 @@ class Game:
         self.handle_misc("A", dt, keys, pressed_set, released_set)
         self.handle_misc("B", dt, keys, pressed_set, released_set)
 
-        # E parry
+        # C parry
         cx, cy = self.px+self.pw/2, self.py+self.ph/2
         if self.parry_window <= 0:
             for b in self.bullets:
@@ -520,12 +572,42 @@ class Game:
                     self.parry_window = 0.35; break
         else:
             self.parry_window -= dt
-        if pygame.K_e in pressed_set and self.parry_window > 0:
+        if pygame.K_c in pressed_set and self.parry_window > 0:
             for b in list(self.bullets):
                 if not b["friendly"] and math.hypot(b["x"]-cx, b["y"]-cy) < 90:
                     b["friendly"] = True; b["dmg"] *= 2
             self.parry_flash = 0.25
             self.parry_window = 0
+
+        # V grab (press) / throw (release) — hold to charge for further/harder throw
+        if pygame.K_v in pressed_set and self.grabbed is None:
+            best, best_d = None, 70
+            for e in self.enemies:
+                if e["dying"]: continue
+                d = math.hypot(e["x"] - cx, e["y"] - cy)
+                if d < best_d: best, best_d = e, d
+            if best is not None:
+                best["grabbed"] = True
+                best["disabled"] = 99
+                self.grabbed = best
+        if self.grabbed is not None:
+            # Lock to player while held
+            self.grabbed["x"] = self.px + self.pw/2
+            self.grabbed["y"] = self.py - self.grabbed["h"] - 6
+            if keys[pygame.K_v]:
+                self.grab_charge = min(1.5, self.grab_charge + dt)
+            else:
+                c = self.grab_charge / 1.5
+                e = self.grabbed
+                e["grabbed"] = False
+                e["disabled"] = 0
+                e["thrown"] = True
+                e["throw_vx"] = self.p_facing * (520 + 700 * c)
+                e["throw_vy"] = -360 - 220 * c
+                e["throw_dmg"] = 60 + int(140 * c)
+                e["throw_radius"] = 80 + int(60 * c)
+                self.grabbed = None
+                self.grab_charge = 0
 
         # Bullets (chrono slows enemy bullets)
         slow_b = 0.5 if self.pu_chrono > 0 else 1
@@ -569,6 +651,22 @@ class Game:
                 e["glint"] -= edt
                 if e["glint"] > 0: new_enemies.append(e)
                 continue
+            # Grabbed: locked above player, skip AI/physics
+            if e.get("grabbed"):
+                new_enemies.append(e); continue
+            # Thrown: arc until ground, then explode
+            if e.get("thrown"):
+                e["throw_vy"] += 1700 * edt
+                e["x"] += e["throw_vx"] * edt
+                e["y"] += e["throw_vy"] * edt
+                if e["y"] + e["h"] >= GROUND_Y:
+                    self.explode(e["x"], e["y"]+e["h"],
+                                 e.get("throw_dmg", 80), e.get("throw_radius", 90))
+                    e["hp"] = 0
+                if e["hp"] <= 0 and not e["dying"]:
+                    e["dying"] = True; e["glint"] = 0.4
+                    self.kills += 1
+                new_enemies.append(e); continue
             if e["disabled"] > 0: e["disabled"] -= edt
             if e["jump_cd"] > 0: e["jump_cd"] -= edt
             dx = (self.px+self.pw/2) - e["x"]
@@ -618,6 +716,7 @@ class Game:
                     for p in self.platforms:
                         v = PLATFORM_VARIANTS[p["kind"]]
                         if v["spikes"]: continue
+                        if p["kind"] == "ladder": continue
                         if e["x"]+e["w"]/2 > p["x"] and e["x"]-e["w"]/2 < p["x"]+p["w"]:
                             top = p["y"]
                             prev_bot = e["y"]+e["h"] - e["vy"]*edt
@@ -644,18 +743,34 @@ class Game:
             new_enemies.append(e)
         self.enemies = new_enemies
 
-        # Spawn enemies
+        # Spawn enemies — tide system: +5 allowance per 111 m, "TIDE IS RISING" every 5th tier
+        new_tier = int(meters) // 111
+        if new_tier > self.spawn_tier:
+            gained = new_tier - self.spawn_tier
+            self.spawn_tier = new_tier
+            self.spawn_allowance = min(100, self.spawn_allowance + 5 * gained)
+            for _ in range(gained):
+                self.tide_msg_count += 1
+                if self.tide_msg_count % 5 == 0:
+                    self.tide_msg_text = "THE TIDE IS RISING"
+                    self.tide_msg_timer = 3.5
+                    self.screen_shake = max(self.screen_shake, 8)
         self.spawn_timer -= dt
-        if self.spawn_timer <= 0 and self.enemies_spawned < 100:
+        if (self.spawn_timer <= 0 and
+            self.enemies_spawned < self.spawn_allowance and
+            self.enemies_spawned < 100):
             self.spawn_enemy()
             self.enemies_spawned += 1
-            # Start slow, +2 enemies/sec per 111 m, hard cap at 100 total spawns
-            rate = 0.4 + 2 * (int(meters) // 111)
+            rate = 0.5 + 0.35 * self.spawn_tier
             interval = 1.0 / max(0.2, rate)
             self.spawn_timer = interval * random.uniform(0.85, 1.15)
-            if self.difficulty == "son" and self.enemies_spawned < 100:
+            if (self.difficulty == "son" and
+                self.enemies_spawned < self.spawn_allowance and
+                self.enemies_spawned < 100):
                 self.spawn_enemy()
                 self.enemies_spawned += 1
+        if self.tide_msg_timer > 0:
+            self.tide_msg_timer -= dt
 
         # Maintain platforms
         while not self.platforms or self.last_platform_x() < self.cam_x + W + 600:
