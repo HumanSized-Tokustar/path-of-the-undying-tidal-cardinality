@@ -632,6 +632,22 @@ class Game:
                 e["glint"] -= edt
                 if e["glint"] > 0: new_enemies.append(e)
                 continue
+            # Grabbed: locked above player, skip AI/physics
+            if e.get("grabbed"):
+                new_enemies.append(e); continue
+            # Thrown: arc until ground, then explode
+            if e.get("thrown"):
+                e["throw_vy"] += 1700 * edt
+                e["x"] += e["throw_vx"] * edt
+                e["y"] += e["throw_vy"] * edt
+                if e["y"] + e["h"] >= GROUND_Y:
+                    self.explode(e["x"], e["y"]+e["h"],
+                                 e.get("throw_dmg", 80), e.get("throw_radius", 90))
+                    e["hp"] = 0
+                if e["hp"] <= 0 and not e["dying"]:
+                    e["dying"] = True; e["glint"] = 0.4
+                    self.kills += 1
+                new_enemies.append(e); continue
             if e["disabled"] > 0: e["disabled"] -= edt
             if e["jump_cd"] > 0: e["jump_cd"] -= edt
             dx = (self.px+self.pw/2) - e["x"]
