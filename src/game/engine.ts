@@ -1118,7 +1118,10 @@ export class Game {
     if (meters > 500 && Math.random() < 0.3) this.spawnEnemy();
   }
 
-  private updateEnemies(dt: number) {
+  private updateEnemies(dtRaw: number) {
+    // CHRONO SLOW: enemies experience 50% time (bosses 75% — none yet, so flat 0.5)
+    const slow = this.puChrono > 0 ? 0.5 : 1;
+    const dt = dtRaw * slow;
     this.enemies = this.enemies.filter(e => {
       if (e.x < this.camX - 300) return false;
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
