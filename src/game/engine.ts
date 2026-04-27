@@ -2049,6 +2049,29 @@ export class Game {
       ctx.fillStyle = `rgba(255,255,180,${this.parryFlash * 0.6})`;
       ctx.fillRect(0, 0, W, H);
     }
+    // === Tide warning banner
+    if (this.tideMsgTimer > 0 && this.tideMsgText) {
+      const t = clamp(this.tideMsgTimer / 3.5, 0, 1);
+      const pulse = 0.7 + 0.3 * Math.sin(this.weatherTime * 8);
+      ctx.save();
+      ctx.globalAlpha = t;
+      // Banner backdrop
+      ctx.fillStyle = "rgba(10,30,60,0.55)";
+      ctx.fillRect(0, 110, W, 70);
+      ctx.strokeStyle = `rgba(123,224,255,${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 110, W, 70);
+      // Title text
+      ctx.fillStyle = "#7be0ff";
+      ctx.font = "bold 30px monospace";
+      const txt = this.tideMsgText;
+      const tw = ctx.measureText(txt).width;
+      ctx.fillText(txt, (W - tw) / 2, 152);
+      // Glow underline
+      ctx.fillStyle = `rgba(255,255,255,${pulse * 0.6})`;
+      ctx.fillRect((W - tw) / 2, 158, tw, 1);
+      ctx.restore();
+    }
     if (this.puChrono > 0) {
       // Purple time-warp tint
       ctx.fillStyle = "rgba(167,139,250,0.10)";
