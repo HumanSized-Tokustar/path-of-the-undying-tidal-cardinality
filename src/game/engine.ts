@@ -2174,9 +2174,16 @@ export class Game {
     // Body (green tunic)
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
     ctx.fillRect(psx + 4, psy + 14, this.pw - 8, this.ph - 22);
-    // Tunic shading
-    ctx.fillStyle = COLOR.playerOut;
-    ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+    // Tunic shading (left dark / right highlight)
+    if (!flicker) {
+      ctx.fillStyle = COLOR.playerOut;
+      ctx.fillRect(psx + 4, psy + 14, 2, this.ph - 22);
+      ctx.fillStyle = COLOR_PLAYER_HI;
+      ctx.fillRect(psx + this.pw - 6, psy + 14, 2, this.ph - 22);
+      // Mid stitch
+      ctx.fillStyle = COLOR_PLAYER_LO;
+      ctx.fillRect(psx + this.pw/2 - 1, psy + 16, 2, this.ph - 26);
+    }
     // Belt (dark)
     ctx.fillStyle = "#1a0a05";
     ctx.fillRect(psx + 4, psy + 24, this.pw - 8, 2);
