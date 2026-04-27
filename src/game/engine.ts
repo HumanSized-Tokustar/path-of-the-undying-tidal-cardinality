@@ -1,15 +1,17 @@
 import { audio } from "./audio";
+import { WEAPONS, WeaponId, STARTING_LOADOUT, STARTING_OWNED } from "./weapons";
+import { PLATFORM_VARIANTS, PlatformKind, pickPlatformKind } from "./platforms";
 
 // ============================================================
-// PATH OF THE UNDYING TIDAL CARDINALITY — Core Engine
-// Wave 1 + 2: movement, combat foundation, HUD, basic enemies, music + SFX.
-// More features (full shops, all bosses, augments) layered on later.
+// PATH OF THE UNDYING TIDAL CARDINALITY — Core Engine (Wave 3)
+// Adds: pause, inventory, weapon switching/hotbar, enemy variants,
+// platform variants, redesigned HUD signaling.
 // ============================================================
 
-export type Phase = "menu" | "playing" | "dead";
+export type Phase = "menu" | "playing" | "paused" | "inventory" | "dead";
 
-const W = 960;   // logical canvas width
-const H = 540;   // logical canvas height
+const W = 960;
+const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
 
@@ -21,27 +23,31 @@ const COLOR = {
   mtnNear: "#4a5a82",
   ground: "#3b2a1a",
   groundTop: "#5a8a3a",
-  platform: "#6b4226",
-  platformTop: "#8a5a3a",
   player: "#f6c453",
   playerOut: "#3a2a10",
-  pistol: "#ffd166",
-  knife: "#d8e2ff",
-  enemy1: "#e85d3a",   // shooter
-  enemy2: "#a83af0",   // shanker
-  enemy3: "#8a4a2a",   // brute
   bullet: "#fff199",
   bulletEnemy: "#ff6a6a",
   hpBar: "#e84545",
   shieldBar: "#4ac6ff",
   odBar: "#c87bff",
-  ammoBar: "#ffd166",
   text: "#fff7d6",
-  textDim: "#b8b08a",
   shadow: "#0a0e1f",
   coin: "#ffd84a",
   token: "#7be0ff",
   crystal: "#d97bff",
+};
+
+// Enemy palette
+const ENEMY_COLOR: Record<EnemyType, string> = {
+  shooter:      "#e85d3a",
+  shooterElite: "#ff8c42",
+  shanker:      "#a83af0",
+  shankerSwift: "#d24aff",
+  brute:        "#8a4a2a",
+  bruteHeavy:   "#5a2a18",
+  rider:        "#3aa0e8",
+  bomber:       "#888fa8",
+  sniper:       "#ff3a6a",
 };
 
 interface Input {
@@ -53,29 +59,61 @@ interface Input {
   melee: boolean; meleePressed: boolean;
   shield: boolean; shieldPressed: boolean;
   overdrive: boolean; overdrivePressed: boolean;
-  inventory: boolean; inventoryPressed: boolean;
-  interact: boolean; interactPressed: boolean;
+  inventoryPressed: boolean;
+  pausePressed: boolean;
+  interactPressed: boolean;
+  slot1Pressed: boolean; slot2Pressed: boolean; slot3Pressed: boolean;
+  wheelDelta: number;
 }
 
 interface Bullet {
   x: number; y: number; vx: number; vy: number;
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
+  color: string;
 }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
-interface Platform { x: number; y: number; w: number; h: number; }
+
+interface Platform {
+  x: number; y: number; w: number; h: number;
+  kind: PlatformKind;
+  // Crumble
+  cracked: boolean; crumbleTimer: number; falling: boolean; fallVy: number;
+  // Moving
+  baseX: number; baseY: number; phase: number; horizontal: boolean;
+}
+
+type EnemyType =
+  | "shooter" | "shooterElite"
+  | "shanker" | "shankerSwift"
+  | "brute"   | "bruteHeavy"
+  | "rider"   | "bomber" | "sniper";
+
 interface Enemy {
-  type: "shooter" | "shanker" | "brute";
+  type: EnemyType;
   x: number; y: number; vx: number; vy: number;
   w: number; h: number; hp: number; maxHp: number;
   onGround: boolean; facing: 1 | -1;
   fireCd: number; aiTimer: number; targetDx: number;
   hurtFlash: number;
+  // burst / charge
+  burstLeft: number; burstCd: number;
+  chargeTime: number; charging: boolean;
+  flying: boolean; baseY: number;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const randi = (a: number, b: number) => Math.floor(rand(a, b + 1));
+const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+
+export interface InventoryState {
+  owned: WeaponId[];
+  loadout: [WeaponId, WeaponId, WeaponId];
+  active: 0 | 1 | 2;
+  consumables: { medkit: number; ammoPack: number };
+  augments: string[];
+}
 
 export interface GameStats {
   hp: number; maxHp: number;
@@ -93,6 +131,9 @@ export interface GameStats {
   rank: string; rankColor: string;
   trackName: string;
   warning: string | null;
+  description: string;       // dynamic bottom-bar text
+  inventory: InventoryState;
+  phase: Phase;
 }
 
 export class Game {
@@ -112,8 +153,11 @@ export class Game {
     melee: false, meleePressed: false,
     shield: false, shieldPressed: false,
     overdrive: false, overdrivePressed: false,
-    inventory: false, inventoryPressed: false,
-    interact: false, interactPressed: false,
+    inventoryPressed: false,
+    pausePressed: false,
+    interactPressed: false,
+    slot1Pressed: false, slot2Pressed: false, slot3Pressed: false,
+    wheelDelta: 0,
   };
   private keys = new Set<string>();
 
@@ -124,17 +168,27 @@ export class Game {
   private pJumps = 0; private maxJumps = 2;
   private pFacing: 1 | -1 = 1;
   private pHp = 123; private pMaxHp = 123;
-  private pInv = 0; // i-frames
+  private pInv = 0;
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
   private rolling = false; private rollTime = 0;
   private slamming = false;
   private shieldActive = false; private shieldTime = 0; private shieldCd = 0;
   private odBar = 0; private odActive = false; private odTime = 0;
   private fireCdR = 0; private fireCdM = 0; private fireCdMisc = 0;
+  private currentPlatform: Platform | null = null;
+
+  // Inventory
+  private inventory: InventoryState = {
+    owned: [...STARTING_OWNED],
+    loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
+    active: 0,
+    consumables: { medkit: 2, ammoPack: 3 },
+    augments: [],
+  };
 
   // World
   private camX = 0;
-  private worldX = 0; // total distance traveled by player in pixels
+  private worldX = 0;
   private platforms: Platform[] = [];
   private enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
@@ -145,11 +199,13 @@ export class Game {
   private totalDmg = 0;
   private kills = 0; private bossKills = 0;
   private coins = 100; private tokens = 1; private crystals = 0;
-  private ammo = 100; private grenades = 5;
+  private ammo = 240; private grenades = 5;
   private timeAlive = 0;
   private spawnTimer = 0;
   private warning: string | null = null;
   private warnTimer = 0;
+  private description = "WASD MOVE • SPACE JUMP×2 • SHIFT DASH • J FIRE • K GRENADE • L MELEE • 1/2/3 SWITCH • Y INVENTORY • P PAUSE";
+  private descTimer = 0;
   private screenShake = 0;
   private weatherTime = 0;
 
@@ -168,19 +224,24 @@ export class Game {
     this.attachInput();
   }
 
-  // ---- Input ----
   private attachInput() {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("wheel", this.onWheel, { passive: true });
   }
   destroy() {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("wheel", this.onWheel);
     cancelAnimationFrame(this.rafId);
   }
+  private onWheel = (e: WheelEvent) => {
+    if (this.phase !== "playing") return;
+    this.input.wheelDelta += e.deltaY;
+  };
   private onKeyDown = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","j","k","l","i","f","y","e","h","r","shift"].includes(k)) e.preventDefault();
+    if (["w","a","s","d"," ","j","k","l","i","f","y","p","e","h","r","shift","1","2","3"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
     switch (k) {
@@ -195,8 +256,12 @@ export class Game {
       case "l": this.input.melee = true; this.input.meleePressed = true; break;
       case "i": this.input.shield = true; this.input.shieldPressed = true; break;
       case "f": this.input.overdrive = true; this.input.overdrivePressed = true; break;
-      case "y": this.input.inventory = true; this.input.inventoryPressed = true; break;
-      case "e": this.input.interact = true; this.input.interactPressed = true; break;
+      case "y": this.input.inventoryPressed = true; break;
+      case "p": this.input.pausePressed = true; break;
+      case "e": this.input.interactPressed = true; break;
+      case "1": this.input.slot1Pressed = true; break;
+      case "2": this.input.slot2Pressed = true; break;
+      case "3": this.input.slot3Pressed = true; break;
     }
   };
   private onKeyUp = (e: KeyboardEvent) => {
@@ -214,12 +279,9 @@ export class Game {
       case "l": this.input.melee = false; break;
       case "i": this.input.shield = false; break;
       case "f": this.input.overdrive = false; break;
-      case "y": this.input.inventory = false; break;
-      case "e": this.input.interact = false; break;
     }
   };
 
-  // ---- Lifecycle ----
   start() {
     this.reset();
     this.phase = "playing";
@@ -240,63 +302,116 @@ export class Game {
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
     this.coins = 100; this.tokens = 1; this.crystals = 0;
-    this.ammo = 100; this.grenades = 5;
+    this.ammo = 240; this.grenades = 5;
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
-    // Seed initial platforms
-    for (let i = 0; i < 12; i++) this.maybeSpawnPlatformAhead(i * 250);
+    this.inventory = {
+      owned: [...STARTING_OWNED],
+      loadout: [...STARTING_LOADOUT] as [WeaponId, WeaponId, WeaponId],
+      active: 0,
+      consumables: { medkit: 2, ammoPack: 3 },
+      augments: [],
+    };
+    for (let i = 0; i < 12; i++) this.spawnPlatformAt(this.px + 220 + i * 240);
   }
   goToMenu() {
     this.phase = "menu";
     this.onPhaseChange(this.phase);
     audio.stopMusic();
   }
+  togglePause() {
+    if (this.phase === "playing") { this.phase = "paused"; this.onPhaseChange(this.phase); }
+    else if (this.phase === "paused") { this.phase = "playing"; this.onPhaseChange(this.phase); this.last = performance.now(); }
+  }
+  toggleInventory() {
+    if (this.phase === "playing") { this.phase = "inventory"; this.onPhaseChange(this.phase); }
+    else if (this.phase === "inventory") { this.phase = "playing"; this.onPhaseChange(this.phase); this.last = performance.now(); }
+  }
+  resume() {
+    if (this.phase === "paused" || this.phase === "inventory") {
+      this.phase = "playing";
+      this.onPhaseChange(this.phase);
+      this.last = performance.now();
+    }
+  }
+  equipToSlot(weaponId: WeaponId, slot: 0 | 1 | 2) {
+    if (!this.inventory.owned.includes(weaponId)) return;
+    this.inventory.loadout[slot] = weaponId;
+    this.emitStats();
+  }
+  setActiveSlot(slot: 0 | 1 | 2) {
+    this.inventory.active = slot;
+    this.emitStats();
+  }
+  useMedkit() {
+    if (this.inventory.consumables.medkit > 0 && this.pHp < this.pMaxHp) {
+      this.inventory.consumables.medkit--;
+      this.pHp = Math.min(this.pMaxHp, this.pHp + 60);
+      this.flashDescription("MEDKIT — +60 HP");
+      this.emitStats();
+    }
+  }
+  useAmmoPack() {
+    if (this.inventory.consumables.ammoPack > 0) {
+      this.inventory.consumables.ammoPack--;
+      this.ammo += 100;
+      this.flashDescription("AMMO PACK — +100 AMMO");
+      this.emitStats();
+    }
+  }
 
   private frame = (t: number) => {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
+    // Always handle pause/inv toggles even when paused
+    if (this.input.pausePressed) { this.input.pausePressed = false; this.togglePause(); }
+    if (this.input.inventoryPressed) { this.input.inventoryPressed = false; this.toggleInventory(); }
     if (this.phase === "playing") this.update(dt);
     this.render();
     this.rafId = requestAnimationFrame(this.frame);
   };
 
-  // ---- Update ----
   private update(dt: number) {
     this.timeAlive += dt;
     this.weatherTime += dt;
 
-    // Player movement
-    let speed = 5 * PX_PER_METER; // 5 m/s -> px/s
+    // Weapon switching
+    if (this.input.slot1Pressed) { this.inventory.active = 0; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[0]].name}`); }
+    if (this.input.slot2Pressed) { this.inventory.active = 1; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[1]].name}`); }
+    if (this.input.slot3Pressed) { this.inventory.active = 2; this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[2]].name}`); }
+    this.input.slot1Pressed = this.input.slot2Pressed = this.input.slot3Pressed = false;
+    if (Math.abs(this.input.wheelDelta) > 30) {
+      const dir = this.input.wheelDelta > 0 ? 1 : -1;
+      this.inventory.active = ((this.inventory.active + dir + 3) % 3) as 0 | 1 | 2;
+      this.flashDescription(`EQUIPPED ${WEAPONS[this.inventory.loadout[this.inventory.active]].name}`);
+      this.input.wheelDelta = 0;
+    }
+    this.input.wheelDelta *= 0.5;
+
+    // Movement
+    let speed = 5 * PX_PER_METER;
     if (this.rolling) speed *= 1.6;
     if (this.odActive) speed *= 1.15;
 
-    const wantLeft = this.input.left;
-    const wantRight = this.input.right;
-    if (wantLeft) { this.pvx = -speed; this.pFacing = -1; }
-    else if (wantRight) { this.pvx = speed; this.pFacing = 1; }
-    else this.pvx = 0;
+    // Friction from current platform (ice = slippery)
+    const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
+
+    if (this.input.left) { this.pFacing = -1; this.pvx = friction < 0.5 ? this.pvx + (-speed - this.pvx) * friction : -speed; }
+    else if (this.input.right) { this.pFacing = 1; this.pvx = friction < 0.5 ? this.pvx + (speed - this.pvx) * friction : speed; }
+    else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
 
     // Dash
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
-      // Roll if Shift+S
-      if (this.input.down && this.pOnGround) {
-        this.rolling = true; this.rollTime = 0.5;
-      } else {
+      if (this.input.down && this.pOnGround) { this.rolling = true; this.rollTime = 0.5; }
+      else {
         this.dashTime = 0.18;
         this.pInv = Math.max(this.pInv, 0.18);
         this.dashCharges--;
         if (this.dashRecharge <= 0) this.dashRecharge = 2;
       }
     }
-    if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * 2.6;
-      this.dashTime -= dt;
-    }
-    if (this.rolling) {
-      this.rollTime -= dt;
-      this.pvx = this.pFacing * speed * 1.6;
-      if (this.rollTime <= 0) this.rolling = false;
-    }
+    if (this.dashTime > 0) { this.pvx = this.pFacing * speed * 2.6; this.dashTime -= dt; }
+    if (this.rolling) { this.rollTime -= dt; this.pvx = this.pFacing * speed * 1.6; if (this.rollTime <= 0) this.rolling = false; }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
       if (this.dashRecharge <= 0 && this.dashCharges < 2) {
@@ -305,114 +420,111 @@ export class Game {
       }
     }
 
-    // Jump / double jump
     if (this.input.jumpPressed && this.pJumps < this.maxJumps) {
-      this.pvy = -560;
-      this.pJumps++;
+      this.pvy = -560; this.pJumps++;
       this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#cfe");
     }
-    // Ground slam
-    if (!this.pOnGround && this.input.down && !this.slamming) {
-      this.slamming = true;
-      this.pvy = 900;
-    }
+    if (!this.pOnGround && this.input.down && !this.slamming) { this.slamming = true; this.pvy = 900; }
 
-    // Gravity
     this.pvy += 1700 * dt;
     if (this.pvy > 1200) this.pvy = 1200;
 
-    // Apply movement + collision (axis separated)
     this.px += this.pvx * dt;
     this.resolveCollisionsX();
     this.py += this.pvy * dt;
     this.pOnGround = false;
+    this.currentPlatform = null;
     this.resolveCollisionsY();
     if (this.pOnGround && this.slamming) {
       this.slamming = false;
       this.screenShake = 12;
-      // Slam shockwave damages nearby enemies
       this.enemies.forEach(e => {
-        if (Math.abs(e.x - this.px) < 120 && Math.abs(e.y - this.py) < 80) {
-          this.damageEnemy(e, 40);
-        }
+        if (Math.abs(e.x - this.px) < 120 && Math.abs(e.y - this.py) < 80) this.damageEnemy(e, 40);
       });
       for (let i = 0; i < 14; i++) this.spawnPuff(this.px + this.pw/2, this.py + this.ph, "#cfe");
     }
 
-    // Distance
     if (this.pvx > 0) this.worldX += this.pvx * dt;
     this.camX = this.px - W * 0.35;
     if (this.camX < 0) this.camX = 0;
 
-    // Shield
     if (this.input.shieldPressed && this.shieldCd <= 0) {
       this.shieldActive = true; this.shieldTime = 5; this.shieldCd = 6;
+      this.flashDescription("SHIELD UP — 95% damage reduction");
     }
-    if (this.shieldActive) {
-      this.shieldTime -= dt;
-      if (this.shieldTime <= 0) this.shieldActive = false;
-    }
+    if (this.shieldActive) { this.shieldTime -= dt; if (this.shieldTime <= 0) this.shieldActive = false; }
     if (this.shieldCd > 0) this.shieldCd -= dt;
 
-    // Overdrive
     if (this.input.overdrivePressed && this.odBar >= 1 && !this.odActive) {
       this.odActive = true; this.odTime = 6; this.odBar = 0;
+      this.flashDescription("OVERDRIVE — 2× damage, +15% speed");
     }
-    if (this.odActive) {
-      this.odTime -= dt;
-      if (this.odTime <= 0) this.odActive = false;
-    }
+    if (this.odActive) { this.odTime -= dt; if (this.odTime <= 0) this.odActive = false; }
 
-    // Cooldowns
     if (this.fireCdR > 0) this.fireCdR -= dt;
     if (this.fireCdM > 0) this.fireCdM -= dt;
     if (this.fireCdMisc > 0) this.fireCdMisc -= dt;
     if (this.pInv > 0) this.pInv -= dt;
+    if (this.descTimer > 0) this.descTimer -= dt;
 
-    // Fire ranged (pistol)
-    if (this.input.fireR && this.fireCdR <= 0 && this.ammo > 0) {
-      this.fireCdR = 0.2;
-      this.ammo--;
-      const dmg = (40) * (this.odActive ? 2 : 1);
-      this.bullets.push({
-        x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
-        vx: this.pFacing * 720, vy: 0,
-        dmg, life: 0.8, friendly: true, r: 4, pierce: 0,
-      });
-      audio.play("fire");
-      this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, "#ffd166");
+    // Fire active weapon (J)
+    if (this.input.fireR && this.fireCdR <= 0) {
+      const w = WEAPONS[this.inventory.loadout[this.inventory.active]];
+      if (w.kind === "ranged" && this.ammo >= w.ammoPerShot) {
+        this.fireCdR = w.fireCd;
+        this.ammo -= w.ammoPerShot;
+        const dmgMult = this.odActive ? 2 : 1;
+        for (let p = 0; p < w.pellets; p++) {
+          const ang = (Math.random() - 0.5) * w.spread;
+          const cs = Math.cos(ang), sn = Math.sin(ang);
+          this.bullets.push({
+            x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
+            vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
+            dmg: w.dmg * dmgMult, life: 0.9, friendly: true, r: 4, pierce: w.pierce,
+            color: w.color,
+          });
+        }
+        audio.play("fire");
+        this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
+      } else if (w.kind === "melee") {
+        // L-equivalent if knife is active
+        this.fireCdR = w.fireCd;
+        const dmg = w.dmg * (this.odActive ? 2 : 1);
+        this.enemies.forEach(e => {
+          if (Math.sign(e.x - this.px) === this.pFacing &&
+              Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
+        });
+        audio.play("fire");
+      }
     }
-    // Melee (knife)
+    // Always-melee L
     if (this.input.meleePressed && this.fireCdM <= 0) {
-      this.fireCdM = 0.35;
-      const dmg = 25 * (this.odActive ? 2 : 1);
+      this.fireCdM = WEAPONS.knife.fireCd;
+      const dmg = WEAPONS.knife.dmg * (this.odActive ? 2 : 1);
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
-            Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) {
-          this.damageEnemy(e, dmg);
-        }
+            Math.abs(e.x - this.px) < 60 && Math.abs(e.y - this.py) < 50) this.damageEnemy(e, dmg);
       });
       audio.play("fire");
     }
-    // Misc (grenade)
+    // Always-grenade K
     if (this.input.fireMPressed && this.fireCdMisc <= 0 && this.grenades > 0) {
       this.fireCdMisc = 1;
       this.grenades--;
       this.bullets.push({
         x: this.px + this.pw/2, y: this.py + this.ph * 0.3,
         vx: this.pFacing * 360, vy: -380,
-        dmg: 100 * (this.odActive ? 2 : 1), life: 2, friendly: true, r: 8, pierce: 99,
+        dmg: WEAPONS.grenade.dmg * (this.odActive ? 2 : 1), life: 2, friendly: true, r: 8, pierce: 99,
+        color: WEAPONS.grenade.color,
       });
     }
 
-    // Reset pressed flags
     this.input.jumpPressed = false; this.input.dashPressed = false;
     this.input.fireRPressed = false; this.input.fireMPressed = false;
     this.input.meleePressed = false; this.input.shieldPressed = false;
-    this.input.overdrivePressed = false; this.input.inventoryPressed = false;
+    this.input.overdrivePressed = false;
     this.input.interactPressed = false;
 
-    // Combo / damage timers
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.comboCount = 0; }
     if (this.dmgRecentTimer > 0) { this.dmgRecentTimer -= dt; if (this.dmgRecentTimer <= 0) this.dmgRecent = 0; }
 
@@ -420,17 +532,10 @@ export class Game {
     this.bullets = this.bullets.filter(b => {
       b.life -= dt;
       if (b.life <= 0) return false;
-      if (!b.friendly) b.vy += 0; // straight for now
-      else if (b.r >= 8) b.vy += 1500 * dt; // grenades arc
+      if (b.friendly && b.r >= 8) b.vy += 1500 * dt;
       b.x += b.vx * dt; b.y += b.vy * dt;
-      // Off screen cull
-      if (b.x < this.camX - 100 || b.x > this.camX + W + 100) return false;
-      // Ground hit (grenade explode)
-      if (b.r >= 8 && b.y > GROUND_Y) {
-        this.explode(b.x, b.y, b.dmg, 90);
-        return false;
-      }
-      // Hit enemies
+      if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
+      if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
       if (b.friendly) {
         for (const e of this.enemies) {
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
@@ -448,21 +553,18 @@ export class Game {
       return true;
     });
 
-    // Particles
     this.particles = this.particles.filter(p => {
       p.life -= dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 600 * dt;
       return p.life > 0;
     });
 
-    // Pickups
     this.pickups = this.pickups.filter(p => {
       p.life -= dt;
       if (p.life <= 0) return false;
       p.vy += 1400 * dt;
       p.y += p.vy * dt;
       if (p.y > GROUND_Y - 8) { p.y = GROUND_Y - 8; p.vy = 0; }
-      // Magnet
       const dx = (this.px + this.pw/2) - p.x; const dy = (this.py + this.ph/2) - p.y;
       const d = Math.hypot(dx, dy);
       if (d < 80) { p.x += (dx/d) * 200 * dt; p.y += (dy/d) * 200 * dt; }
@@ -475,9 +577,9 @@ export class Game {
       return true;
     });
 
-    // Enemies
+    this.updatePlatforms(dt);
     this.updateEnemies(dt);
-    // Spawning
+
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnEnemy();
@@ -486,15 +588,12 @@ export class Game {
       this.spawnTimer = rand(1.4, 2.6) * ramp;
     }
 
-    // World streaming — keep platforms ahead
-    while (this.platforms.length === 0 || this.platforms[this.platforms.length - 1].x < this.camX + W + 600) {
-      const lastX = this.platforms.length ? this.platforms[this.platforms.length - 1].x + this.platforms[this.platforms.length - 1].w : this.px + 200;
-      this.maybeSpawnPlatformAhead(lastX + rand(120, 260));
+    // World streaming
+    while (this.platforms.length === 0 || this.lastPlatformX() < this.camX + W + 600) {
+      this.spawnPlatformAt(this.lastPlatformX() + rand(140, 280));
     }
-    // Cull behind
-    this.platforms = this.platforms.filter(p => p.x + p.w > this.camX - 200);
+    this.platforms = this.platforms.filter(p => p.x + p.w > this.camX - 200 && p.y < H + 200);
 
-    // Warning sample
     this.warnTimer -= dt;
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
@@ -507,18 +606,55 @@ export class Game {
     }
 
     if (this.screenShake > 0) this.screenShake -= dt * 30;
-
-    // Death check
-    if (this.pHp <= 0) {
-      this.die();
-    }
-
+    if (this.pHp <= 0) this.die();
     this.emitStats();
+  }
+
+  private flashDescription(text: string) { this.description = text; this.descTimer = 3; }
+
+  private lastPlatformX() {
+    if (!this.platforms.length) return this.px + 200;
+    const last = this.platforms[this.platforms.length - 1];
+    return last.x + last.w;
+  }
+
+  private spawnPlatformAt(x: number) {
+    if (Math.random() < 0.5) return;
+    const meters = this.worldX / PX_PER_METER;
+    const kind = pickPlatformKind(meters);
+    const w = randi(80, 180);
+    const y = randi(280, 400);
+    this.platforms.push({
+      x, y, w, h: 16,
+      kind,
+      cracked: false, crumbleTimer: 0, falling: false, fallVy: 0,
+      baseX: x, baseY: y, phase: Math.random() * Math.PI * 2,
+      horizontal: Math.random() < 0.5,
+    });
+  }
+
+  private updatePlatforms(dt: number) {
+    for (const p of this.platforms) {
+      if (p.kind === "moving") {
+        p.phase += dt * 1.2;
+        if (p.horizontal) p.x = p.baseX + Math.sin(p.phase) * 60;
+        else p.y = p.baseY + Math.sin(p.phase) * 40;
+      }
+      if (p.kind === "crumble" && p.cracked && !p.falling) {
+        p.crumbleTimer -= dt;
+        if (p.crumbleTimer <= 0) p.falling = true;
+      }
+      if (p.falling) {
+        p.fallVy += 1700 * dt;
+        p.y += p.fallVy * dt;
+      }
+    }
   }
 
   private resolveCollisionsX() {
     if (this.px < 0) this.px = 0;
     for (const p of this.platforms) {
+      if (p.falling) continue;
       if (this.px + this.pw > p.x && this.px < p.x + p.w &&
           this.py + this.ph > p.y && this.py < p.y + p.h) {
         if (this.pvx > 0) this.px = p.x - this.pw;
@@ -527,18 +663,18 @@ export class Game {
     }
   }
   private resolveCollisionsY() {
-    // Ground
     if (this.py + this.ph >= GROUND_Y) {
-      this.py = GROUND_Y - this.ph;
-      this.pvy = 0;
-      this.pOnGround = true;
-      this.pJumps = 0;
+      this.py = GROUND_Y - this.ph; this.pvy = 0; this.pOnGround = true; this.pJumps = 0;
     }
     for (const p of this.platforms) {
+      if (p.falling) continue;
       if (this.px + this.pw > p.x && this.px < p.x + p.w &&
           this.py + this.ph > p.y && this.py < p.y + p.h) {
         if (this.pvy > 0) {
           this.py = p.y - this.ph; this.pvy = 0; this.pOnGround = true; this.pJumps = 0;
+          this.currentPlatform = p;
+          if (p.kind === "spike") this.damagePlayer(PLATFORM_VARIANTS.spike.damageOnTop);
+          if (p.kind === "crumble" && !p.cracked) { p.cracked = true; p.crumbleTimer = 0.5; }
         } else if (this.pvy < 0) {
           this.py = p.y + p.h; this.pvy = 0;
         }
@@ -546,92 +682,164 @@ export class Game {
     }
   }
 
-  private maybeSpawnPlatformAhead(x: number) {
-    if (Math.random() < 0.55) {
-      const w = randi(80, 180);
-      const y = randi(280, 400);
-      this.platforms.push({ x, y, w, h: 16 });
-    }
-  }
-
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
-    const r = Math.random();
     const spawnX = this.camX + W + rand(40, 200);
-    let type: Enemy["type"] = "shooter";
-    if (r < 0.2) type = "brute";
-    else if (r < 0.7) type = "shanker";
-    else type = "shooter";
-    const base = {
-      shooter: { hp: 100, w: 26, h: 40 },
-      shanker: { hp: 60, w: 24, h: 36 },
-      brute: { hp: 320, w: 38, h: 48 },
-    }[type];
+
+    // Type pool by distance
+    const pool: EnemyType[] = ["shooter", "shanker"];
+    if (meters > 150) pool.push("brute");
+    if (meters > 400) pool.push("shankerSwift", "shooterElite");
+    if (meters > 700) pool.push("rider");
+    if (meters > 1000) pool.push("bomber", "sniper", "bruteHeavy");
+    const type = pick(pool);
+
+    const stats: Record<EnemyType, { hp: number; w: number; h: number }> = {
+      shooter:      { hp: 100, w: 26, h: 40 },
+      shooterElite: { hp: 200, w: 28, h: 42 },
+      shanker:      { hp: 60,  w: 24, h: 36 },
+      shankerSwift: { hp: 45,  w: 22, h: 34 },
+      brute:        { hp: 320, w: 38, h: 48 },
+      bruteHeavy:   { hp: 600, w: 46, h: 56 },
+      rider:        { hp: 140, w: 44, h: 30 },
+      bomber:       { hp: 90,  w: 50, h: 24 },
+      sniper:       { hp: 130, w: 24, h: 40 },
+    };
+    const base = stats[type];
+    const flying = type === "bomber" || type === "rider";
+    const baseY = flying ? randi(120, 240) : GROUND_Y - base.h;
+
     this.enemies.push({
-      type, x: spawnX, y: GROUND_Y - base.h, vx: 0, vy: 0,
+      type, x: spawnX, y: baseY, vx: 0, vy: 0,
       w: base.w, h: base.h, hp: base.hp, maxHp: base.hp,
-      onGround: true, facing: -1,
+      onGround: !flying, facing: -1,
       fireCd: rand(0.6, 1.4), aiTimer: 0, targetDx: 0, hurtFlash: 0,
+      burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
+      flying, baseY,
     });
-    // small ramp: occasionally spawn 2nd if deep
     if (meters > 500 && Math.random() < 0.3) this.spawnEnemy();
   }
 
   private updateEnemies(dt: number) {
     this.enemies = this.enemies.filter(e => {
-      // Cull far behind
       if (e.x < this.camX - 300) return false;
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
       const dx = (this.px + this.pw/2) - e.x;
       e.facing = dx > 0 ? 1 : -1;
       const dist = Math.abs(dx);
 
-      // Type AI
-      if (e.type === "shanker") {
-        // Chase
-        const desired = Math.sign(dx) * 130;
-        e.vx = desired;
-      } else if (e.type === "shooter") {
-        // Maintain ~280px distance
-        if (dist > 320) e.vx = Math.sign(dx) * 80;
-        else if (dist < 220) e.vx = -Math.sign(dx) * 60;
-        else e.vx = 0;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0 && dist < 460) {
-          e.fireCd = rand(1.0, 1.8);
-          this.bullets.push({
-            x: e.x, y: e.y + e.h * 0.4,
-            vx: e.facing * 420, vy: 0,
-            dmg: 8, life: 1.2, friendly: false, r: 3, pierce: 0,
-          });
-        }
-      } else if (e.type === "brute") {
-        e.vx = Math.sign(dx) * 50;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0 && dist < 380) {
-          e.fireCd = rand(1.6, 2.4);
-          // Shotgun burst
-          for (let i = -1; i <= 1; i++) {
+      switch (e.type) {
+        case "shanker":
+          e.vx = Math.sign(dx) * 130;
+          break;
+        case "shankerSwift":
+          e.vx = Math.sign(dx) * 220;
+          // leap occasionally
+          if (e.onGround && Math.random() < 0.01 && dist < 200) { e.vy = -480; e.onGround = false; }
+          break;
+        case "shooter":
+          if (dist > 320) e.vx = Math.sign(dx) * 80;
+          else if (dist < 220) e.vx = -Math.sign(dx) * 60;
+          else e.vx = 0;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && dist < 460) {
+            e.fireCd = rand(1.0, 1.8);
+            this.spawnEnemyBullet(e, 420, 8);
+          }
+          break;
+        case "shooterElite":
+          if (dist > 320) e.vx = Math.sign(dx) * 90;
+          else if (dist < 220) e.vx = -Math.sign(dx) * 70;
+          else e.vx = 0;
+          e.fireCd -= dt; e.burstCd -= dt;
+          if (e.burstLeft > 0 && e.burstCd <= 0) {
+            this.spawnEnemyBullet(e, 480, 10);
+            e.burstLeft--; e.burstCd = 0.12;
+          } else if (e.fireCd <= 0 && dist < 480) {
+            e.fireCd = rand(1.6, 2.4); e.burstLeft = 3; e.burstCd = 0;
+          }
+          break;
+        case "brute":
+          e.vx = Math.sign(dx) * 50;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && dist < 380) {
+            e.fireCd = rand(1.6, 2.4);
+            for (let i = -1; i <= 1; i++) this.spawnEnemyBullet(e, 360, 12, i * 60);
+          }
+          break;
+        case "bruteHeavy":
+          e.vx = Math.sign(dx) * 35;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && dist < 220 && e.onGround) {
+            e.fireCd = 3.0;
+            // ground pound shockwave
+            this.screenShake = Math.max(this.screenShake, 8);
+            for (let i = -2; i <= 2; i++) this.spawnEnemyBullet(e, 420, 16, i * 20);
+          }
+          break;
+        case "rider":
+          // hover-bike pass
+          e.vx = -260; // moves left across screen
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && dist < 600) {
+            e.fireCd = 0.8;
             this.bullets.push({
-              x: e.x, y: e.y + e.h * 0.4,
-              vx: e.facing * 360 + i * 30, vy: i * 60,
-              dmg: 12, life: 1, friendly: false, r: 3, pierce: 0,
+              x: e.x, y: e.y + e.h, vx: 0, vy: 200, dmg: 14, life: 4, friendly: false, r: 5, pierce: 0, color: "#ff8c42",
             });
           }
-        }
+          break;
+        case "bomber":
+          e.vx = -180;
+          e.y = e.baseY + Math.sin(this.weatherTime * 1.2 + e.x * 0.01) * 12;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0 && dist < 500) {
+            e.fireCd = 1.2;
+            this.bullets.push({
+              x: e.x, y: e.y + e.h, vx: -60, vy: 80, dmg: 22, life: 4, friendly: false, r: 6, pierce: 0, color: "#ffb347",
+            });
+          }
+          break;
+        case "sniper":
+          e.vx = 0;
+          if (!e.charging && dist < 700) {
+            e.charging = true; e.chargeTime = 1.2;
+          }
+          if (e.charging) {
+            e.chargeTime -= dt;
+            if (e.chargeTime <= 0) {
+              this.spawnEnemyBullet(e, 1200, 35);
+              e.charging = false;
+              e.fireCd = 1.5;
+            }
+          }
+          break;
       }
 
-      // gravity
-      e.vy += 1700 * dt;
+      if (!e.flying) {
+        e.vy += 1700 * dt;
+        e.y += e.vy * dt;
+        if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
+      }
       e.x += e.vx * dt;
-      e.y += e.vy * dt;
-      if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
 
-      // Touch damage (shanker)
-      if (e.type === "shanker" && dist < 24 && Math.abs((e.y) - this.py) < 30) {
-        this.damagePlayer(8);
+      // Touch damage
+      const touching = e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
+                       e.y < this.py + this.ph && e.y + e.h > this.py;
+      if (touching) {
+        if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8);
+        else if (e.type === "rider") this.damagePlayer(15);
+        else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12);
       }
       return e.hp > 0;
+    });
+  }
+
+  private spawnEnemyBullet(e: Enemy, speed: number, dmg: number, vyOffset = 0) {
+    this.bullets.push({
+      x: e.x, y: e.y + e.h * 0.4,
+      vx: e.facing * speed, vy: vyOffset,
+      dmg, life: 1.5, friendly: false, r: 3, pierce: 0,
+      color: "#ff6a6a",
     });
   }
 
@@ -658,18 +866,14 @@ export class Game {
   }
 
   private dropLoot(e: Enemy) {
-    // Coins: 30% normal, 60% brute
-    const coinChance = e.type === "brute" ? 0.6 : 0.3;
+    const heavy = e.type === "brute" || e.type === "bruteHeavy" || e.type === "shooterElite";
+    const coinChance = heavy ? 0.7 : 0.35;
     if (Math.random() < coinChance) {
-      const v = e.type === "brute" ? randi(100, 400) : randi(50, 100);
+      const v = heavy ? randi(120, 480) : randi(50, 100);
       this.pickups.push({ x: e.x, y: e.y, vy: -260, type: "coin", value: v, life: 12 });
     }
-    if (Math.random() < 0.06) {
-      this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
-    }
-    if (Math.random() < 0.025) {
-      this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 10), life: 12 });
-    }
+    if (Math.random() < 0.07) this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
+    if (Math.random() < 0.03) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 10), life: 12 });
   }
 
   private explode(x: number, y: number, dmg: number, radius: number) {
@@ -707,10 +911,12 @@ export class Game {
     this.onPhaseChange(this.phase);
   }
 
-  // ---- Stats emission for HUD ----
   private emitStats() {
     const meters = this.worldX / PX_PER_METER;
     const rank = this.computeRank(meters);
+    const desc = this.descTimer > 0
+      ? this.description
+      : (this.warning ? `! ${this.warning} !` : `${WEAPONS[this.inventory.loadout[this.inventory.active]].name.toUpperCase()} EQUIPPED  •  ${Math.floor(meters)}m  •  ♪ ${audio.currentTrackName()}`);
     this.onStatsChange({
       hp: this.pHp, maxHp: this.pMaxHp,
       ammo: this.ammo, grenades: this.grenades,
@@ -727,6 +933,9 @@ export class Game {
       rank: rank.label, rankColor: rank.color,
       trackName: audio.currentTrackName(),
       warning: this.warning,
+      description: desc,
+      inventory: this.inventory,
+      phase: this.phase,
     });
   }
 
@@ -734,47 +943,37 @@ export class Game {
     const minutes = this.timeAlive / 60;
     if (this.bossKills >= 20 || this.coins >= 1_000_000 || meters >= 1_000_000 || this.totalDmg >= 100_000_000 || minutes >= 60)
       return { label: "SON 😭👍", color: "rank-son" };
-    if (this.bossKills >= 10 || this.totalDmg >= 300_000 || minutes >= 45)
-      return { label: "S", color: "text-[hsl(var(--rank-s))]" };
-    if (this.bossKills >= 5 || meters >= 500_000 || minutes >= 30)
-      return { label: "A", color: "text-[hsl(var(--rank-a))]" };
-    if (this.bossKills >= 3 || minutes >= 20)
-      return { label: "B", color: "text-[hsl(var(--rank-b))]" };
-    if (this.bossKills >= 2 || minutes >= 15)
-      return { label: "C", color: "text-[hsl(var(--rank-c))]" };
-    if (this.bossKills >= 1 || minutes >= 10)
-      return { label: "D", color: "text-[hsl(var(--rank-d))]" };
+    if (this.bossKills >= 10 || this.totalDmg >= 300_000 || minutes >= 45) return { label: "S", color: "text-[hsl(var(--rank-s))]" };
+    if (this.bossKills >= 5  || meters >= 500_000 || minutes >= 30) return { label: "A", color: "text-[hsl(var(--rank-a))]" };
+    if (this.bossKills >= 3  || minutes >= 20) return { label: "B", color: "text-[hsl(var(--rank-b))]" };
+    if (this.bossKills >= 2  || minutes >= 15) return { label: "C", color: "text-[hsl(var(--rank-c))]" };
+    if (this.bossKills >= 1  || minutes >= 10) return { label: "D", color: "text-[hsl(var(--rank-d))]" };
     return { label: "F", color: "text-[hsl(var(--rank-f))]" };
   }
 
-  // ---- Render ----
   private render() {
     const ctx = this.ctx;
-    // Resize handling — render at logical W×H, scale with CSS
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     let shakeX = 0, shakeY = 0;
-    if (this.screenShake > 0) {
+    if (this.screenShake > 0 && this.phase === "playing") {
       shakeX = (Math.random() - 0.5) * this.screenShake;
       shakeY = (Math.random() - 0.5) * this.screenShake;
     }
     ctx.clearRect(0, 0, W, H);
 
-    // Sky gradient
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, COLOR.sky1);
     grad.addColorStop(1, COLOR.sky2);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // Stars
     for (let i = 0; i < 40; i++) {
       const x = (i * 137 + this.camX * 0.05) % W;
       const y = (i * 73) % 240;
       ctx.fillStyle = "rgba(255,255,255,0.5)";
       ctx.fillRect(x, y, 2, 2);
     }
-    // Birds (moving)
     for (let i = 0; i < 5; i++) {
       const bx = (i * 220 + this.weatherTime * 30) % (W + 80) - 40;
       const by = 80 + Math.sin(this.weatherTime + i) * 10;
@@ -786,32 +985,62 @@ export class Game {
 
     ctx.translate(shakeX, shakeY);
 
-    // Mountains parallax (3 layers)
     this.drawMountains(COLOR.mtnFar, 0.15, 360, 80);
     this.drawMountains(COLOR.mtnMid, 0.35, 380, 110);
     this.drawMountains(COLOR.mtnNear, 0.6, 410, 140);
 
-    // Ground
     ctx.fillStyle = COLOR.ground;
     ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
     ctx.fillStyle = COLOR.groundTop;
     ctx.fillRect(0, GROUND_Y, W, 6);
-    // ground tile lines
     const tileOffset = Math.floor(this.camX) % 32;
     ctx.fillStyle = "#2a1a0a";
     for (let x = -tileOffset; x < W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 1, H - GROUND_Y);
 
-    // Platforms
+    // Platforms with variants
     for (const p of this.platforms) {
       const sx = p.x - this.camX;
       if (sx + p.w < 0 || sx > W) continue;
-      ctx.fillStyle = COLOR.platform;
+      const v = PLATFORM_VARIANTS[p.kind];
+      // crumble flicker
+      if (p.kind === "crumble" && p.cracked && Math.floor(this.weatherTime * 12) % 2 === 0) {
+        ctx.globalAlpha = 0.6;
+      }
+      ctx.fillStyle = v.bodyColor;
       ctx.fillRect(sx, p.y, p.w, p.h);
-      ctx.fillStyle = COLOR.platformTop;
+      ctx.fillStyle = v.topColor;
       ctx.fillRect(sx, p.y, p.w, 4);
+      ctx.fillStyle = v.edgeColor;
+      ctx.fillRect(sx, p.y + p.h - 2, p.w, 2);
+      ctx.globalAlpha = 1;
+      // Spike teeth
+      if (p.kind === "spike") {
+        ctx.fillStyle = "#ffd6d6";
+        for (let i = 0; i < p.w; i += 8) {
+          ctx.beginPath();
+          ctx.moveTo(sx + i, p.y);
+          ctx.lineTo(sx + i + 4, p.y - 6);
+          ctx.lineTo(sx + i + 8, p.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      // Ice sheen
+      if (p.kind === "ice") {
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(sx + 4, p.y + 1, Math.max(8, p.w * 0.3), 1);
+      }
+      // Crumble cracks
+      if (p.kind === "crumble" && p.cracked) {
+        ctx.strokeStyle = "#3a2010";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx + p.w * 0.3, p.y); ctx.lineTo(sx + p.w * 0.4, p.y + p.h);
+        ctx.moveTo(sx + p.w * 0.7, p.y); ctx.lineTo(sx + p.w * 0.6, p.y + p.h);
+        ctx.stroke();
+      }
     }
 
-    // Pickups
     for (const p of this.pickups) {
       const sx = p.x - this.camX;
       const c = p.type === "coin" ? COLOR.coin : p.type === "token" ? COLOR.token : COLOR.crystal;
@@ -820,27 +1049,44 @@ export class Game {
       ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 3, p.y - 3, 2, 2);
     }
 
-    // Enemies
+    // Enemies (variant-aware)
     for (const e of this.enemies) {
       const sx = e.x - this.camX - e.w/2;
       ctx.fillStyle = COLOR.shadow;
       ctx.fillRect(sx + 2, e.y + 2, e.w, e.h);
-      ctx.fillStyle = e.hurtFlash > 0 ? "#fff" :
-        e.type === "shooter" ? COLOR.enemy1 : e.type === "shanker" ? COLOR.enemy2 : COLOR.enemy3;
+      const baseCol = ENEMY_COLOR[e.type];
+      ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
       ctx.fillRect(sx, e.y, e.w, e.h);
-      // eyes
+      // outline accents per variant
+      if (e.type === "shooterElite") {
+        ctx.fillStyle = "#fff"; ctx.fillRect(sx, e.y, e.w, 2); ctx.fillRect(sx, e.y + e.h - 2, e.w, 2);
+      } else if (e.type === "bruteHeavy") {
+        ctx.fillStyle = "#000"; ctx.fillRect(sx + 4, e.y + 4, e.w - 8, 4);
+      } else if (e.type === "rider") {
+        ctx.fillStyle = "#222"; ctx.fillRect(sx, e.y + e.h - 2, e.w, 4);
+        ctx.fillStyle = "#ffd166"; ctx.fillRect(sx + e.w - 6, e.y + 4, 2, 2);
+      } else if (e.type === "bomber") {
+        ctx.fillStyle = "#444"; ctx.fillRect(sx - 6, e.y + e.h/2, e.w + 12, 3);
+      } else if (e.type === "sniper") {
+        if (e.charging) {
+          ctx.strokeStyle = "rgba(255,60,60,0.7)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx + e.w/2, e.y + e.h * 0.4);
+          ctx.lineTo(sx + e.w/2 + e.facing * 800, e.y + e.h * 0.4);
+          ctx.stroke();
+        }
+      }
       ctx.fillStyle = "#fff";
       const eyeX = e.facing > 0 ? sx + e.w - 8 : sx + 4;
       ctx.fillRect(eyeX, e.y + 8, 4, 4);
-      // hp
       ctx.fillStyle = "#0008"; ctx.fillRect(sx, e.y - 8, e.w, 4);
       ctx.fillStyle = COLOR.hpBar; ctx.fillRect(sx, e.y - 8, (e.hp / e.maxHp) * e.w, 4);
     }
 
-    // Bullets
     for (const b of this.bullets) {
       const sx = b.x - this.camX;
-      ctx.fillStyle = b.friendly ? COLOR.bullet : COLOR.bulletEnemy;
+      ctx.fillStyle = b.friendly ? b.color : COLOR.bulletEnemy;
       ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
     }
 
@@ -851,31 +1097,29 @@ export class Game {
     const flicker = this.pInv > 0 && Math.floor(this.pInv * 30) % 2 === 0;
     ctx.fillStyle = flicker ? "#fff" : COLOR.player;
     ctx.fillRect(psx, this.py, this.pw, this.ph);
-    // outline
     ctx.fillStyle = COLOR.playerOut;
     ctx.fillRect(psx, this.py, this.pw, 2);
     ctx.fillRect(psx, this.py + this.ph - 2, this.pw, 2);
-    // face
     ctx.fillStyle = "#000";
     const faceX = this.pFacing > 0 ? psx + this.pw - 9 : psx + 5;
     ctx.fillRect(faceX, this.py + 12, 4, 4);
-    // gun
+    // gun (color reflects equipped)
+    const eqColor = WEAPONS[this.inventory.loadout[this.inventory.active]].color;
     ctx.fillStyle = "#222";
     if (this.pFacing > 0) ctx.fillRect(psx + this.pw, this.py + this.ph * 0.45, 12, 4);
     else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 12, 4);
-    // shield aura
+    ctx.fillStyle = eqColor;
+    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, this.py + this.ph * 0.45, 2, 2);
+    else ctx.fillRect(psx - 12, this.py + this.ph * 0.45, 2, 2);
     if (this.shieldActive) {
-      ctx.strokeStyle = COLOR.shieldBar;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLOR.shieldBar; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(psx + this.pw/2, this.py + this.ph/2, 30, 0, Math.PI * 2); ctx.stroke();
     }
     if (this.odActive) {
-      ctx.strokeStyle = COLOR.odBar;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLOR.odBar; ctx.lineWidth = 2;
       ctx.strokeRect(psx - 3, this.py - 3, this.pw + 6, this.ph + 6);
     }
 
-    // Particles
     for (const p of this.particles) {
       const sx = p.x - this.camX;
       ctx.globalAlpha = p.life / p.max;
@@ -883,11 +1127,13 @@ export class Game {
       ctx.fillRect(sx, p.y, p.size, p.size);
     }
     ctx.globalAlpha = 1;
-
     ctx.restore();
 
-    // Bottom description bar
-    this.drawBottomBar();
+    // Pause/Inventory dim
+    if (this.phase === "paused" || this.phase === "inventory") {
+      ctx.fillStyle = "rgba(10,14,31,0.7)";
+      ctx.fillRect(0, 0, W, H);
+    }
   }
 
   private drawMountains(color: string, parallax: number, baseY: number, height: number) {
@@ -903,20 +1149,5 @@ export class Game {
     ctx.lineTo(W, H);
     ctx.closePath();
     ctx.fill();
-  }
-
-  private drawBottomBar() {
-    const ctx = this.ctx;
-    const y = H - 28;
-    ctx.fillStyle = "rgba(10, 14, 31, 0.85)";
-    ctx.fillRect(0, y, W, 28);
-    ctx.fillStyle = "#ffd166";
-    ctx.fillRect(0, y, W, 2);
-    ctx.font = "10px 'Press Start 2P', monospace";
-    ctx.fillStyle = "#fff7d6";
-    ctx.textBaseline = "middle";
-    const meters = Math.floor(this.worldX / PX_PER_METER);
-    const text = `WASD MOVE  SPACE JUMP×2  SHIFT DASH  J FIRE  K MISC  L MELEE  I SHIELD  F OD  Y INV  ●  ${meters}m  ●  ${audio.currentTrackName()}`;
-    ctx.fillText(text, 12, y + 14);
   }
 }

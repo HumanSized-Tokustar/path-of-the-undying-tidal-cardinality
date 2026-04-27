@@ -1,52 +1,61 @@
 import { GameStats } from "@/game/engine";
+import { WEAPONS } from "@/game/weapons";
 
 export const Hud = ({ stats }: { stats: GameStats }) => {
   const hpPct = Math.max(0, (stats.hp / stats.maxHp) * 100);
   const odPct = stats.overdriveBar * 100;
+  const active = stats.inventory.active;
+
   return (
-    <div className="pointer-events-none absolute inset-0 p-3 pixel-text text-[10px] md:text-[11px]">
-      {/* Top-left: HP / Shield / Overdrive */}
-      <div className="absolute top-3 left-3 space-y-1.5 w-[260px]">
-        <Bar label={`HP  ${Math.ceil(stats.hp)}/${stats.maxHp}`} pct={hpPct} color="hsl(var(--hud-hp))" />
-        <Bar
+    <div className="pointer-events-none absolute inset-0 pixel-text text-[10px] md:text-[11px]">
+      {/* Top-left bars */}
+      <div className="absolute top-3 left-3 space-y-1.5 w-[280px]">
+        <SegBar label={`HP ${Math.ceil(stats.hp)}/${stats.maxHp}`} pct={hpPct} color="hsl(var(--hud-hp))" />
+        <SegBar
           label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (I)"}
           pct={stats.shieldActive ? 100 : ((6 - stats.shieldCd) / 6) * 100}
           color="hsl(var(--hud-shield))"
         />
-        <Bar
+        <SegBar
           label={stats.overdriveActive ? `OVERDRIVE ${stats.overdriveTime.toFixed(1)}s` : `OVERDRIVE (F) ${odPct.toFixed(0)}%`}
           pct={stats.overdriveActive ? (stats.overdriveTime / 6) * 100 : odPct}
           color="hsl(var(--hud-overdrive))"
         />
-        <div className="flex gap-2 text-[hsl(var(--hud-gold))]">
+        <div className="flex gap-2 text-[#ffd84a] mt-1">
           <span>AMMO {stats.ammo}</span>
           <span>● GREN {stats.grenades}</span>
           <span>● DASH {stats.dashCharges}/2</span>
         </div>
       </div>
 
-      {/* Top-right: currencies + stats */}
-      <div className="absolute top-3 right-3 text-right space-y-1">
-        <div className="text-[hsl(var(--coin,45_95%_55%))]" style={{ color: "#ffd84a" }}>◆ {stats.coins} COINS</div>
-        <div style={{ color: "#7be0ff" }}>◆ {stats.tokens} TOKENS</div>
-        <div style={{ color: "#d97bff" }}>◆ {stats.crystals} CRYSTALS</div>
-        <div className="text-foreground/80 mt-2">{Math.floor(stats.distance)} m</div>
-        <div className="text-foreground/60">{formatTime(stats.timeAlive)}</div>
-        <div className="text-foreground/60">♪ {stats.trackName}</div>
+      {/* Top-center distance / timer */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center">
+        <div className="text-[#ffd84a] text-[16px]" style={{ textShadow: "2px 2px 0 #0a0e1f" }}>
+          {Math.floor(stats.distance)} m
+        </div>
+        <div className="text-[#fff7d6]/70 text-[9px]">{formatTime(stats.timeAlive)}</div>
       </div>
 
-      {/* Center-top: warning */}
+      {/* Top-right currencies */}
+      <div className="absolute top-3 right-3 text-right space-y-1">
+        <div style={{ color: "#ffd84a" }}>◆ {stats.coins} COINS</div>
+        <div style={{ color: "#7be0ff" }}>◆ {stats.tokens} TOKENS</div>
+        <div style={{ color: "#d97bff" }}>◆ {stats.crystals} CRYSTALS</div>
+        <div className="text-[#fff7d6]/70 mt-2 text-[9px]">♪ {stats.trackName}</div>
+      </div>
+
+      {/* Warning */}
       {stats.warning && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-destructive/80 text-destructive-foreground animate-pulse">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-destructive/80 text-destructive-foreground animate-pulse">
           ! {stats.warning} !
         </div>
       )}
 
-      {/* Combo + dmg counters */}
+      {/* Combo + dmg */}
       {stats.comboCount > 1 && (
         <div className="absolute top-1/2 right-6 -translate-y-1/2 text-right">
           <div className="text-[hsl(var(--accent))] text-[24px]">x{stats.comboCount}</div>
-          <div className="text-foreground/70 text-[10px]">COMBO</div>
+          <div className="text-[#fff7d6]/70 text-[10px]">COMBO</div>
         </div>
       )}
       {stats.damageRecent > 0 && (
@@ -55,19 +64,44 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
         </div>
       )}
 
-      {/* Total damage / kills bottom-left, above description bar */}
-      <div className="absolute bottom-10 left-3 text-foreground/80">
+      <div className="absolute bottom-20 left-3 text-[#fff7d6]/80">
         TOTAL DMG: {Math.floor(stats.totalDamage)} ● KILLS: {stats.kills} ● BOSSES: {stats.bossKills}
+      </div>
+
+      {/* Hotbar */}
+      <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-2">
+        {stats.inventory.loadout.map((wid, i) => {
+          const w = WEAPONS[wid];
+          const isActive = i === active;
+          return (
+            <div
+              key={i}
+              className={`w-16 h-16 border-2 flex flex-col items-center justify-center ${isActive ? "border-[#ffd84a] bg-[#1a2342]/90 shadow-[0_0_12px_rgba(255,216,74,0.6)]" : "border-[#3a4a72] bg-[#0a0e1f]/80"}`}
+              style={{ color: w.color }}
+            >
+              <div className="text-[8px]">[{i + 1}]</div>
+              <div className="text-[9px] mt-1" style={{ color: w.color }}>{w.name.slice(0, 7).toUpperCase()}</div>
+              <div className="w-8 h-1.5 mt-1" style={{ background: w.color }} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom description bar — matches reference video */}
+      <div className="absolute bottom-0 left-0 right-0 h-9 bg-[#0a0e1f]/90 border-t-2 border-[#ffd84a] flex items-center px-3">
+        <div className="text-[#fff7d6] text-[10px] truncate">{stats.description}</div>
       </div>
     </div>
   );
 };
 
-const Bar = ({ label, pct, color }: { label: string; pct: number; color: string }) => (
+const SegBar = ({ label, pct, color }: { label: string; pct: number; color: string }) => (
   <div>
-    <div className="text-[9px] text-foreground/80 mb-0.5">{label}</div>
-    <div className="h-3 w-full bg-muted border border-border">
+    <div className="text-[9px] text-[#fff7d6] mb-0.5" style={{ textShadow: "1px 1px 0 #0a0e1f" }}>{label}</div>
+    <div className="h-3.5 w-full bg-[#0a0e1f] border-2 border-[#3a4a72] relative overflow-hidden">
       <div className="h-full transition-[width] duration-100" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} />
+      {/* segment dividers */}
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 18px, rgba(0,0,0,0.4) 18px 19px)" }} />
     </div>
   </div>
 );

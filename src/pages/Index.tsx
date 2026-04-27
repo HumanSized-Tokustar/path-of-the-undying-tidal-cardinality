@@ -4,6 +4,8 @@ import { audio } from "@/game/audio";
 import { Hud } from "@/components/game/Hud";
 import { StartScreen } from "@/components/game/StartScreen";
 import { DeathScreen } from "@/components/game/DeathScreen";
+import { PauseOverlay } from "@/components/game/PauseOverlay";
+import { InventoryOverlay } from "@/components/game/InventoryOverlay";
 
 const Index = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -21,13 +23,8 @@ const Index = () => {
     return () => g.destroy();
   }, []);
 
-  const handleStart = () => {
-    audio.init();
-    gameRef.current?.start();
-  };
-  const handleRestart = () => {
-    gameRef.current?.goToMenu();
-  };
+  const handleStart = () => { audio.init(); gameRef.current?.start(); };
+  const handleRestart = () => { gameRef.current?.goToMenu(); };
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-background">
@@ -42,9 +39,11 @@ const Index = () => {
         />
       </div>
 
-      {phase === "playing" && stats && <Hud stats={stats} />}
+      {(phase === "playing" || phase === "paused" || phase === "inventory") && stats && <Hud stats={stats} />}
       {phase === "menu" && <StartScreen onStart={handleStart} />}
       {phase === "dead" && stats && <DeathScreen stats={stats} onRestart={handleRestart} />}
+      {phase === "paused" && gameRef.current && <PauseOverlay game={gameRef.current} />}
+      {phase === "inventory" && gameRef.current && stats && <InventoryOverlay game={gameRef.current} stats={stats} />}
     </main>
   );
 };
