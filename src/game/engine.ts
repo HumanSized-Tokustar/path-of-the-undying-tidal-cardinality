@@ -1626,20 +1626,69 @@ export class Game {
       const float = Math.sin(this.animTime * 4 + p.x * 0.01) * 2;
       let col = "#ffd84a";
       let label = "";
+      let icon = "";
       if (p.type === "coin") col = "#ffd84a";
       else if (p.type === "token") col = "#7be0ff";
       else if (p.type === "crystal") col = "#d97bff";
-      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
-      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
-      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
-      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; }
-      ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
-      ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
-      ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
-      if (label) {
-        ctx.font = "8px monospace";
+      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; icon = "+"; }
+      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; icon = ">"; }
+      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; icon = "*"; }
+      else if (p.type === "pu_chr") { col = "#a78bfa"; label = "SLOW"; icon = "~"; }
+      const py = p.y + float;
+      // Soft halo glow (pulsing)
+      const pulse = 0.5 + 0.5 * Math.sin(this.animTime * 5 + p.x * 0.02);
+      ctx.globalAlpha = 0.18 + pulse * 0.18;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(sx, py, 11 + pulse * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Coin/token/crystal: render gem or coin
+      if (p.type === "coin") {
+        // Coin: outer ring + inner
+        ctx.fillStyle = "#7a5a10"; ctx.fillRect(sx - 6, py - 6, 12, 12);
+        ctx.fillStyle = col; ctx.fillRect(sx - 5, py - 5, 10, 10);
+        ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 4, py - 4, 2, 2);
+        ctx.fillStyle = "#a07020"; ctx.fillRect(sx - 2, py + 1, 4, 1);
+      } else if (p.type === "crystal") {
+        // Diamond shape
+        ctx.fillStyle = "#0008";
+        ctx.beginPath(); ctx.moveTo(sx, py - 7); ctx.lineTo(sx + 6, py); ctx.lineTo(sx, py + 7); ctx.lineTo(sx - 6, py); ctx.closePath(); ctx.fill();
         ctx.fillStyle = col;
-        ctx.fillText(label, sx - 8, p.y + float - 10);
+        ctx.beginPath(); ctx.moveTo(sx, py - 6); ctx.lineTo(sx + 5, py); ctx.lineTo(sx, py + 6); ctx.lineTo(sx - 5, py); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(sx - 2, py - 3, 2, 2);
+      } else if (p.type === "token") {
+        // Hex token
+        ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, py - 6, 12, 12);
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          const x = sx + Math.cos(a) * 6, y = py + Math.sin(a) * 6;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(sx - 1, py - 1, 2, 2);
+      } else {
+        // Power-up capsule
+        ctx.fillStyle = "#0a0e1f";
+        ctx.fillRect(sx - 7, py - 8, 14, 16);
+        ctx.fillStyle = col;
+        ctx.fillRect(sx - 6, py - 7, 12, 14);
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(sx - 5, py - 6, 3, 6);
+        ctx.fillStyle = "#0a0e1f";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText(icon, sx - 2, py + 2);
+      }
+      if (label) {
+        ctx.font = "7px monospace";
+        ctx.fillStyle = col;
+        ctx.fillText(label, sx - label.length * 2, py - 11);
+      }
+      // Sparkle bits
+      if ((Math.floor(this.animTime * 6) + Math.floor(p.x * 0.1)) % 5 === 0) {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(sx + 6, py - 8, 1, 1);
+        ctx.fillRect(sx - 8, py + 4, 1, 1);
       }
     }
 
