@@ -507,8 +507,8 @@ class Game:
                         r=7 if wid=="rocket" else 4, pierce=w["pierce"], color=w["color"], grenade=False,
                     ))
 
-        # L melee
-        if pygame.K_l in pressed_set and self.fire_cd_m <= 0:
+        # R melee
+        if pygame.K_r in pressed_set and self.fire_cd_m <= 0:
             w = WEAPONS[self.inventory["melee"]]
             self.fire_cd_m = w["cd"]; self.melee_swing = 1
             dmg = w["dmg"] * (2 if self.od_active else 1) * (2 if self.pu_damage > 0 else 1)
