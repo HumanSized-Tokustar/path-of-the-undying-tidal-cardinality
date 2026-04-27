@@ -378,6 +378,9 @@ export class Game {
   }
   reset() {
     this.px = 200; this.py = GROUND_Y - this.ph; this.pvx = 0; this.pvy = 0;
+    // DUNCE: double player starter stats
+    const pm = this.diffPlayerMult();
+    this.pMaxHp = 123 * pm;
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
@@ -387,8 +390,8 @@ export class Game {
     this.comboTimer = 0; this.comboCount = 0;
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
     this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
-    this.coins = 100; this.tokens = 1; this.crystals = 0;
-    this.ammo = 240; this.grenades = 5;
+    this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
+    this.ammo = 240 * pm; this.grenades = 5 * pm;
     this.timeAlive = 0; this.spawnTimer = 1.5;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.untouchedTime = 0; this.momentum = 0; this.paceMult = 1;
