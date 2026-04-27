@@ -1896,13 +1896,24 @@ export class Game {
     // Body
     ctx.fillStyle = e.hurtFlash > 0 ? "#fff" : baseCol;
     ctx.fillRect(sx + 3, e.y + 12, e.w - 6, e.h - 22);
+    // Body shading (left strip)
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(sx + 3, e.y + 12, 2, e.h - 22);
+    // Belt
+    ctx.fillStyle = "#1a0a05";
+    ctx.fillRect(sx + 3, e.y + e.h - 14, e.w - 6, 2);
     // Head
     ctx.fillStyle = "#e8c89a";
     ctx.fillRect(sx + 6, e.y + 4, e.w - 12, 10);
-    // Eye
-    ctx.fillStyle = "#000";
+    // Head shading
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(sx + 6, e.y + 4, 2, 10);
+    // Eyes (red glow)
+    ctx.fillStyle = "#ff3030";
     const eyeX = e.facing > 0 ? sx + e.w - 9 : sx + 7;
-    ctx.fillRect(eyeX, e.y + 8, 2, 3);
+    ctx.fillRect(eyeX, e.y + 8, 2, 2);
+    ctx.fillStyle = "rgba(255,80,80,0.4)";
+    ctx.fillRect(eyeX - 1, e.y + 7, 4, 4);
 
     // Type-specific accents
     if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
