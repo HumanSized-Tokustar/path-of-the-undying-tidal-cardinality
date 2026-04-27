@@ -411,6 +411,9 @@ export class Game {
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
     this.enemiesSpawned = 0;
+    this.spawnTier = 0; this.spawnAllowance = 5;
+    this.tideMessageCount = 0; this.tideMsgTimer = 0; this.tideMsgText = "";
+    this.grabCharge = 0;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
     this.paceMult = 1;
     this.animTime = 0; this.meleeSwing = 0;
