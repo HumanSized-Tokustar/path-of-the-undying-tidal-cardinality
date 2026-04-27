@@ -133,7 +133,8 @@ export interface InventoryState {
 
 export interface GameStats {
   hp: number; maxHp: number;
-  ammo: number; grenades: number;
+  ammo: number; grenades: number; miscAmmo: number;
+  lives: number;
   coins: number; tokens: number; crystals: number;
   distance: number;
   totalDamage: number;
