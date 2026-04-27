@@ -966,6 +966,25 @@ export class Game {
           break;
       }
 
+      // === Separation: don't stick to player or each other
+      const distToP = Math.abs((this.px + this.pw/2) - e.x);
+      if (distToP < 36 && (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper")) {
+        // ranged enemies kite away from melee range
+        e.vx = -Math.sign(dx) * 160;
+      }
+      for (const o of this.enemies) {
+        if (o === e || o.flying !== e.flying) continue;
+        const sep = e.x - o.x;
+        if (Math.abs(sep) < 28 && Math.abs(e.y - o.y) < 30) {
+          e.vx += Math.sign(sep || 1) * 80 * dt * 60;
+        }
+      }
+      // Occasional melee swipe for ranged shooters when adjacent
+      if ((e.type === "shooter" || e.type === "shooterElite") && distToP < 44 && e.fireCd <= 0.2) {
+        e.fireCd = 0.9;
+        if (Math.abs(e.y - this.py) < 50) this.damagePlayer(10);
+      }
+
       if (!e.flying) {
         e.vy += 1700 * dt;
         e.y += e.vy * dt;
@@ -973,7 +992,7 @@ export class Game {
       }
       e.x += e.vx * dt;
 
-      // Touch damage
+      // Touch damage with cooldown so they can't spam
       const touching = e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching) {
