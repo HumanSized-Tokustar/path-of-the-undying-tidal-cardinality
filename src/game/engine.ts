@@ -1040,6 +1040,8 @@ export class Game {
   }
 
   private damagePlayer(dmg: number) {
+    if (this.inSafeZone) return;
+    if (this.puInvincible > 0) return;
     if (this.pInv > 0) return;
     let actual = dmg;
     if (this.shieldActive) actual *= 0.05;
