@@ -1173,6 +1173,55 @@ export class Game {
     ctx.fillStyle = "#2a1a0a";
     for (let x = -tileOffset; x < W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 1, H - GROUND_Y);
 
+    // === Landmarks (safezones)
+    for (const l of this.landmarks) {
+      const sx = l.x - this.camX;
+      if (sx + l.w < 0 || sx > W) continue;
+      // Safezone glow
+      ctx.fillStyle = "rgba(123,224,255,0.10)";
+      ctx.fillRect(sx, GROUND_Y - 120, l.w, 120);
+      ctx.strokeStyle = "rgba(123,224,255,0.6)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx, GROUND_Y - 120, l.w, 120);
+      // Building
+      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#8a5a3a";
+      ctx.fillStyle = col;
+      ctx.fillRect(sx + 30, GROUND_Y - 80, l.w - 60, 80);
+      ctx.fillStyle = "#1a1a2e";
+      ctx.fillRect(sx + l.w/2 - 12, GROUND_Y - 50, 24, 50);
+      ctx.fillStyle = "#ffd84a";
+      ctx.fillRect(sx + l.w/2 - 8, GROUND_Y - 110, 16, 14);
+      ctx.fillStyle = "#0a0e1f";
+      ctx.font = "10px monospace";
+      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "SHADY GUY";
+      ctx.fillText(label, sx + 20, GROUND_Y - 96);
+    }
+
+    // === World pickups along the road
+    for (const p of this.worldPickups) {
+      const sx = p.x - this.camX;
+      if (sx < -20 || sx > W + 20) continue;
+      const float = Math.sin(this.animTime * 4 + p.x * 0.01) * 2;
+      let col = "#ffd84a";
+      let label = "";
+      if (p.type === "coin") col = "#ffd84a";
+      else if (p.type === "token") col = "#7be0ff";
+      else if (p.type === "crystal") col = "#d97bff";
+      else if (p.type === "pu_dmg") { col = "#ff5a5a"; label = "DMG"; }
+      else if (p.type === "pu_spd") { col = "#7bff8a"; label = "SPD"; }
+      else if (p.type === "pu_inv") { col = "#fff7d6"; label = "INV"; }
+      else if (p.type === "pu_for") { col = "#a78bfa"; label = "FOR"; }
+      ctx.fillStyle = "#0008"; ctx.fillRect(sx - 6, p.y + float - 6, 12, 12);
+      ctx.fillStyle = col; ctx.fillRect(sx - 5, p.y + float - 5, 10, 10);
+      ctx.fillStyle = "#fff"; ctx.fillRect(sx - 4, p.y + float - 4, 2, 2);
+      if (label) {
+        ctx.font = "8px monospace";
+        ctx.fillStyle = col;
+        ctx.fillText(label, sx - 8, p.y + float - 10);
+      }
+    }
+
+
     // Platforms with variants
     for (const p of this.platforms) {
       const sx = p.x - this.camX;
