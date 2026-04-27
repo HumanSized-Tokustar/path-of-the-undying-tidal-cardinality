@@ -1,16 +1,52 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useEffect, useRef, useState } from "react";
+import { Game, GameStats, Phase } from "@/game/engine";
+import { audio } from "@/game/audio";
+import { Hud } from "@/components/game/Hud";
+import { StartScreen } from "@/components/game/StartScreen";
+import { DeathScreen } from "@/components/game/DeathScreen";
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+const Index = () => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gameRef = useRef<Game | null>(null);
+  const [phase, setPhase] = useState<Phase>("menu");
+  const [stats, setStats] = useState<GameStats | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const g = new Game(canvasRef.current, {
+      onStatsChange: setStats,
+      onPhaseChange: setPhase,
+    });
+    gameRef.current = g;
+    return () => g.destroy();
+  }, []);
+
+  const handleStart = () => {
+    audio.init();
+    gameRef.current?.start();
+  };
+  const handleRestart = () => {
+    gameRef.current?.goToMenu();
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
-    </div>
+    <main className="relative w-screen h-screen overflow-hidden bg-background">
+      <h1 className="sr-only">Path of the Undying Tidal Cardinality — Endless Pixel Shooter</h1>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <canvas
+          ref={canvasRef}
+          width={960}
+          height={540}
+          className="max-w-full max-h-full w-auto h-auto"
+          style={{ aspectRatio: "16/9", width: "100vw", height: "100vh", objectFit: "contain" }}
+        />
+      </div>
+
+      {phase === "playing" && stats && <Hud stats={stats} />}
+      {phase === "menu" && <StartScreen onStart={handleStart} />}
+      {phase === "dead" && stats && <DeathScreen stats={stats} onRestart={handleRestart} />}
+    </main>
   );
 };
-
-const Index = PlaceholderIndex;
 
 export default Index;
