@@ -1455,6 +1455,16 @@ export class Game {
     });
   }
 
+  // Ladder helper: returns ladder platform if player overlaps it
+  private findOverlappingLadder(): Platform | null {
+    for (const p of this.platforms) {
+      if (p.kind !== "ladder") continue;
+      if (this.px + this.pw > p.x && this.px < p.x + p.w &&
+          this.py + this.ph > p.y && this.py < p.y + p.h + 60) return p;
+    }
+    return null;
+  }
+
   private die() {
     // 3-life system: respawn unless out of lives
     if (this.lives > 1) {
