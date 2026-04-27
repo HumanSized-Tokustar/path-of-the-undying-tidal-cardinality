@@ -337,7 +337,7 @@ export class Game {
   };
   private onKeyDown = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","j","k","l","i","f","g","y","p","e","o","h","r","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
+    if (["w","a","s","d"," ","f","r","q","e","c","v","x","g","tab","p","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
     switch (k) {
@@ -347,15 +347,15 @@ export class Game {
       case "s": this.input.down = true; break;
       case " ": this.input.jump = true; this.input.jumpPressed = true; break;
       case "shift": this.input.dash = true; this.input.dashPressed = true; break;
-      case "j": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "k": this.input.miscA = true; this.input.miscAPressed = true; break;
-      case "o": this.input.miscB = true; this.input.miscBPressed = true; break;
-      case "l": this.input.melee = true; this.input.meleePressed = true; break;
-      case "i": this.input.shield = true; this.input.shieldPressed = true; break;
+      case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
+      case "q": this.input.miscA = true; this.input.miscAPressed = true; break;
+      case "e": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "r": this.input.melee = true; this.input.meleePressed = true; break;
+      case "x": this.input.shield = true; this.input.shieldPressed = true; break;
       case "g": this.input.overdrivePressed = true; break;
-      case "e": this.input.parryPressed = true; break;
-      case "f": this.input.grabPressed = true; break;
-      case "y": this.input.inventoryPressed = true; break;
+      case "c": this.input.parryPressed = true; break;
+      case "v": this.input.grab = true; this.input.grabPressed = true; break;
+      case "tab": this.input.inventoryPressed = true; break;
       case "p": this.input.pausePressed = true; break;
       case "1": case "2": case "3": case "4": case "5": case "6":
         this.input.slotPressed[parseInt(k) - 1] = true; break;
@@ -371,11 +371,12 @@ export class Game {
       case "s": this.input.down = false; break;
       case " ": this.input.jump = false; break;
       case "shift": this.input.dash = false; break;
-      case "j": this.input.fireR = false; break;
-      case "k": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "o": this.input.miscB = false; this.input.miscBReleased = true; break;
-      case "l": this.input.melee = false; break;
-      case "i": this.input.shield = false; break;
+      case "f": this.input.fireR = false; break;
+      case "q": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "e": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "r": this.input.melee = false; break;
+      case "x": this.input.shield = false; break;
+      case "v": this.input.grab = false; this.input.grabReleased = true; break;
     }
   };
 
