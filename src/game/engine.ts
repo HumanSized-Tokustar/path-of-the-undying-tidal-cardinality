@@ -1445,9 +1445,7 @@ export class Game {
     this.pHp -= actual;
     this.pInv = 0.4;
     this.screenShake = Math.max(this.screenShake, 6);
-    this.untouchedTime = 0;
-    this.momentum = Math.max(0, this.momentum - 0.35);
-    this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (rebuild by avoiding damage)`);
+    this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (distance-based)`);
   }
 
   private spawnPuff(x: number, y: number, color: string) {
@@ -1458,6 +1456,21 @@ export class Game {
   }
 
   private die() {
+    // 3-life system: respawn unless out of lives
+    if (this.lives > 1) {
+      this.lives--;
+      this.pHp = this.pMaxHp;
+      this.pInv = 2.0;
+      this.pvy = -300; this.pvx = 0;
+      this.screenShake = Math.max(this.screenShake, 14);
+      // clear nearby threats (small mercy)
+      for (const e of this.enemies) {
+        if (Math.abs(e.x - this.px) < 220 && !e.dying) e.disabled = Math.max(e.disabled, 1.2);
+      }
+      this.flashDescription(`LIFE LOST — ${this.lives}/${this.maxLives} REMAINING`);
+      audio.play("death");
+      return;
+    }
     audio.play("death");
     audio.stopMusic();
     this.phase = "dead";
@@ -1473,7 +1486,7 @@ export class Game {
       : (this.warning ? `! ${this.warning} !` : `${activeName} EQUIPPED  •  ${Math.floor(meters)}m  •  PACE ${this.paceMult.toFixed(2)}×  •  ♪ ${audio.currentTrackName()}`);
     this.onStatsChange({
       hp: this.pHp, maxHp: this.pMaxHp,
-      ammo: this.ammo, grenades: this.grenades,
+      ammo: this.ammo, grenades: this.miscAmmo, miscAmmo: this.miscAmmo, lives: this.lives,
       coins: this.coins, tokens: this.tokens, crystals: this.crystals,
       distance: meters,
       totalDamage: this.totalDmg,
