@@ -285,6 +285,8 @@ class Game:
             flying=flying, base_y=base_y,
             jump_cd=0, disabled=0, dying=False, glint=0,
             leg_phase=random.random()*math.pi*2, hurt_flash=0,
+            grabbed=False, thrown=False, throw_vx=0, throw_vy=0,
+            throw_dmg=80, throw_radius=90,
         ))
 
     # ---- Damage helpers ----
