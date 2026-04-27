@@ -300,11 +300,14 @@ export class Game {
   }
 
   // Multipliers (enemy stats)
-  // SON: smarter (faster reactions/fire) and 2× damage
-  private diffEnemyHp()   { return this.difficulty === "dunce" ? 0.7 : this.difficulty === "son" ? 1.6 : 1; }
-  private diffEnemyDmg()  { return this.difficulty === "dunce" ? 0.6 : this.difficulty === "son" ? 2.0 : 1; }
-  private diffEnemyFire() { return this.difficulty === "dunce" ? 1.4 : this.difficulty === "son" ? 0.55 : 1; }
-  private diffSmart()     { return this.difficulty === "son" ? 1 : 0; } // 0..1 smartness boost
+  // DUNCE: weaker, slower, dumber. SON: smarter, faster, 2× damage.
+  private diffEnemyHp()    { return this.difficulty === "dunce" ? 0.5 : this.difficulty === "son" ? 1.6 : 1; }
+  private diffEnemyDmg()   { return this.difficulty === "dunce" ? 0.4 : this.difficulty === "son" ? 2.0 : 1; }
+  private diffEnemyFire()  { return this.difficulty === "dunce" ? 1.7 : this.difficulty === "son" ? 0.55 : 1; }
+  private diffEnemySpeed() { return this.difficulty === "dunce" ? 0.55: this.difficulty === "son" ? 1.15 : 1; }
+  private diffSmart()      { return this.difficulty === "son" ? 1 : 0; } // 0..1 smartness boost
+  // Player starter stat multiplier (DUNCE = 2× starter HP/ammo/grenades)
+  private diffPlayerMult() { return this.difficulty === "dunce" ? 2 : 1; }
 
   private attachInput() {
     window.addEventListener("keydown", this.onKeyDown);
