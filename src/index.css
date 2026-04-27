@@ -2,95 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Retro pixel-art palette — dark sky base with neon accents */
+    --background: 230 35% 8%;
+    --foreground: 45 90% 92%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 230 30% 12%;
+    --card-foreground: 45 90% 92%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 230 35% 10%;
+    --popover-foreground: 45 90% 92%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 35 95% 55%;          /* amber HUD */
+    --primary-foreground: 230 40% 10%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 200 80% 50%;       /* sky blue */
+    --secondary-foreground: 230 40% 10%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 230 20% 20%;
+    --muted-foreground: 45 30% 70%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 320 80% 60%;          /* magenta */
+    --accent-foreground: 230 40% 10%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 85% 55%;
+    --destructive-foreground: 45 90% 92%);
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 230 25% 22%;
+    --input: 230 25% 18%;
+    --ring: 35 95% 55%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Game-specific tokens */
+    --hud-gold: 45 95% 55%;
+    --hud-hp: 0 80% 55%;
+    --hud-shield: 200 90% 60%;
+    --hud-overdrive: 280 90% 65%;
+    --hud-xp: 140 70% 50%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --rank-son: 50 100% 60%;
+    --rank-s: 45 95% 55%;
+    --rank-a: 0 0% 75%;
+    --rank-b: 30 60% 45%;
+    --rank-c: 130 60% 50%;
+    --rank-d: 25 40% 35%;
+    --rank-f: 280 60% 55%;
 
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --gradient-son: linear-gradient(135deg, hsl(50 100% 70%), hsl(40 100% 50%), hsl(50 100% 70%));
+    --shadow-glow: 0 0 24px hsl(35 95% 55% / 0.5);
   }
 }
 
@@ -98,8 +59,40 @@ All colors MUST be HSL.
   * {
     @apply border-border;
   }
-
-  body {
-    @apply bg-background text-foreground;
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Press Start 2P', ui-monospace, 'Courier New', monospace;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
   }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+}
+
+@layer utilities {
+  .pixel-text {
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    letter-spacing: 0.05em;
+    text-shadow: 2px 2px 0 hsl(230 40% 5%);
+  }
+  .rank-son {
+    background: var(--gradient-son);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shine 2s linear infinite;
+    filter: drop-shadow(0 0 8px hsl(50 100% 60% / 0.8));
+  }
+  @keyframes shine {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  .glow-amber { box-shadow: var(--shadow-glow); }
 }
