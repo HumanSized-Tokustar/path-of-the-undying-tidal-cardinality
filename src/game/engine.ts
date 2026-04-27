@@ -915,6 +915,10 @@ export class Game {
     this.pHp -= actual;
     this.pInv = 0.4;
     this.screenShake = Math.max(this.screenShake, 6);
+    // Pace penalty: lose ~35% of momentum per hit, reset untouched timer
+    this.untouchedTime = 0;
+    this.momentum = Math.max(0, this.momentum - 0.35);
+    this.flashDescription(`HIT — pace ${(this.paceMult).toFixed(2)}× (rebuild by avoiding damage)`);
   }
 
   private spawnPuff(x: number, y: number, color: string) {
