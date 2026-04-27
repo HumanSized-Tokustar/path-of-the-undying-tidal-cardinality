@@ -190,6 +190,17 @@ class Game:
         self.time_alive = 0
         self.spawn_timer = 3.5
         self.enemies_spawned = 0
+        # --- Tide spawn system ---
+        self.spawn_tier = 0          # int(meters / 111)
+        self.spawn_allowance = 5     # caps at 100
+        self.tide_msg_count = 0
+        self.tide_msg_timer = 0
+        self.tide_msg_text = ""
+        # --- Roll & charged grab ---
+        self.rolling = False
+        self.roll_time = 0
+        self.grabbed = None          # reference to enemy dict
+        self.grab_charge = 0
         self.weather = "clear"; self.weather_switch = 8.0
         self.cycle_time = 0
         self.pace_mult = 1.0
