@@ -341,54 +341,63 @@ export class Game {
     this.input.wheelDelta += e.deltaY;
   };
   private onKeyDown = (e: KeyboardEvent) => {
-    const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","f","r","q","e","c","v","x","g","tab","p","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { actionFor, normalizeKey } = require("./keybinds") as typeof import("./keybinds");
+    const k = normalizeKey(e.key);
+    // Prevent default for keys we use as game bindings
+    const action = actionFor(k);
+    if (action || ["w","a","s","d"," ","tab"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
-    switch (k) {
-      case "a": this.input.left = true; break;
-      case "d": this.input.right = true; break;
-      case "w": {
-        // W = climb up if on ladder, otherwise jump (mirrors SPACE)
+    if (!action) return;
+    switch (action) {
+      case "moveLeft": this.input.left = true; break;
+      case "moveRight": this.input.right = true; break;
+      case "moveUp": {
         this.input.up = true;
+        // moveUp doubles as climb; if not on ladder, also triggers jump (dual-purpose like W)
         const onLadder = !!this.findOverlappingLadder();
         if (!onLadder) { this.input.jump = true; this.input.jumpPressed = true; }
         break;
       }
-      case "s": this.input.down = true; break;
-      case " ": this.input.jump = true; this.input.jumpPressed = true; break;
-      case "q": this.input.dash = true; this.input.dashPressed = true; break;       // DASH
-      case "z": (this as any).rollPressed = true; break;                              // ROLL
-      case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "o": this.input.miscA = true; this.input.miscAPressed = true; break;     // MISC A
-      case "p": this.input.miscB = true; this.input.miscBPressed = true; break;     // MISC B
-      case "r": this.input.melee = true; this.input.meleePressed = true; break;
-      case "x": this.input.shield = true; this.input.shieldPressed = true; break;
-      case "g": this.input.overdrivePressed = true; break;
-      case "e": this.input.parryPressed = true; break;                                // PARRY
-      case "v": this.input.grab = true; this.input.grabPressed = true; break;
-      case "tab": this.input.inventoryPressed = true; break;
-      case "escape": this.input.pausePressed = true; break;                           // PAUSE
-      case "1": case "2": case "3": case "4": case "5": case "6":
-        this.input.slotPressed[parseInt(k) - 1] = true; break;
+      case "moveDown": this.input.down = true; break;
+      case "jump": this.input.jump = true; this.input.jumpPressed = true; break;
+      case "dash": this.input.dash = true; this.input.dashPressed = true; break;
+      case "roll": (this as any).rollPressed = true; break;
+      case "fire": this.input.fireR = true; this.input.fireRPressed = true; break;
+      case "miscA": this.input.miscA = true; this.input.miscAPressed = true; break;
+      case "miscB": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "melee": this.input.melee = true; this.input.meleePressed = true; break;
+      case "shield": this.input.shield = true; this.input.shieldPressed = true; break;
+      case "overdrive": this.input.overdrivePressed = true; break;
+      case "parry": this.input.parryPressed = true; break;
+      case "grab": this.input.grab = true; this.input.grabPressed = true; break;
+      case "inventory": this.input.inventoryPressed = true; break;
+      case "pause": this.input.pausePressed = true; break;
+      case "slot1": case "slot2": case "slot3": case "slot4": case "slot5": case "slot6":
+        this.input.slotPressed[parseInt(action.slice(4)) - 1] = true; break;
     }
   };
   private onKeyUp = (e: KeyboardEvent) => {
-    const k = e.key.toLowerCase();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { actionFor, normalizeKey } = require("./keybinds") as typeof import("./keybinds");
+    const k = normalizeKey(e.key);
     this.keys.delete(k);
-    switch (k) {
-      case "a": this.input.left = false; break;
-      case "d": this.input.right = false; break;
-      case "w": this.input.up = false; this.input.jump = false; break;
-      case "s": this.input.down = false; break;
-      case " ": this.input.jump = false; break;
-      case "q": this.input.dash = false; break;
-      case "f": this.input.fireR = false; break;
-      case "o": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "p": this.input.miscB = false; this.input.miscBReleased = true; break;
-      case "r": this.input.melee = false; break;
-      case "x": this.input.shield = false; break;
-      case "v": this.input.grab = false; this.input.grabReleased = true; break;
+    const action = actionFor(k);
+    if (!action) return;
+    switch (action) {
+      case "moveLeft": this.input.left = false; break;
+      case "moveRight": this.input.right = false; break;
+      case "moveUp": this.input.up = false; this.input.jump = false; break;
+      case "moveDown": this.input.down = false; break;
+      case "jump": this.input.jump = false; break;
+      case "dash": this.input.dash = false; break;
+      case "fire": this.input.fireR = false; break;
+      case "miscA": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "miscB": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "melee": this.input.melee = false; break;
+      case "shield": this.input.shield = false; break;
+      case "grab": this.input.grab = false; this.input.grabReleased = true; break;
     }
   };
 
