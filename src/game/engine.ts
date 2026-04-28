@@ -187,6 +187,7 @@ export class Game {
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
   private dashTrail: { x:number; y:number; life:number }[] = [];
   private rolling = false; private rollTime = 0;
+  private rollCharges = 2; private rollRecharge = 0;
   private slamming = false;
   private dropThrough = 0; // disable jump-through landings briefly
   private shieldActive = false; private shieldTime = 0; private shieldCd = 0;
@@ -227,7 +228,7 @@ export class Game {
   private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH (S+SHIFT ROLL) • F FIRE • R MELEE • Q/E THROW MISC • C PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • P PAUSE";
+  private description = "WASD MOVE • SPACE/W JUMP×2 (S+SPACE drop, W on ladder = climb) • Q DASH • Z ROLL • F FIRE • R MELEE • O/P THROW MISC • E PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • ESC PAUSE";
   private spawnTier = 0;        // grows by 1 per 111m for the tide system
   private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
   private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
