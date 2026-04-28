@@ -1,112 +1,130 @@
-## Wave 6 — Keybind overhaul, Roll meter, Better enemy ladder AI, and packaged Python build
+# Wave 8 — Rebindable controls, responsive UI, 10-boss system, polished shops, full Python sync
 
-### 1. Keybind remap (TS engine + UI)
+## 1. Rebindable keybinds (Settings menu)
 
-New layout (every list/HUD/StartScreen/Pause must reflect this exactly):
+- New `SettingsOverlay.tsx` accessed via a `SETTINGS` button on `StartScreen` and on the `PauseOverlay`.
+- Tabs: **Audio** (existing sliders) and **Controls** (new).
+- Controls tab lists every action (Move U/D/L/R, Jump, Dash, Roll, Parry, Fire, Melee, MiscA, MiscB, Grab, Shield, Overdrive, Inventory, Pause, Slots 1-6). Clicking a row → "Press any key…" → captures next keydown, validates no duplicate, saves.
+- Bindings persisted in `localStorage` (`potc.keybinds.v1`) and loaded into `Game.keybinds` at boot. Defaults = Wave 6 layout (Q dash, Z roll, E parry, W/SPACE jump, ESC pause, O/P misc, etc.).
+- `Game.onKeyDown/onKeyUp` refactored: instead of a `switch(e.code)`, it looks up `this.keybinds.actionFor(e.code)` and dispatches.
+- A **RESET DEFAULTS** button restores the Wave 6 map.
 
+## 2. Responsive UI (fix the clipped HUD in the screenshot)
 
-| Action                | Old                                         | New                                                                             |
-| --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------- |
-| Dash                  | SHIFT                                       | **Q**                                                                           |
-| Roll                  | S+SHIFT                                     | **Z**(standalone, no S needed)                                                  |
-| Parry                 | C                                           | **E**                                                                           |
-| Misc A                | Q                                           | **O**                                                                           |
-| Misc B                | E                                           | **P**                                                                           |
-| Jump / Double-jump    | SPACE                                       | SPACE **or W**                                                                  |
-| Climb ladder up       | W                                           | **W** still works (dual purpose: jump when not on ladder, climb when on ladder) |
-| Climb ladder down     | S                                           | S (unchanged)                                                                   |
-| Fire                  | F                                           | F                                                                               |
-| Melee                 | R                                           | R                                                                               |
-| Grab (hold to charge) | V                                           | V                                                                               |
-| Shield                | X                                           | X                                                                               |
-| Overdrive             | G                                           | G                                                                               |
-| Inventory             | TAB                                         | TAB                                                                             |
-| Pause                 | P moved → **Pause = ESC** (P is now Misc B) | &nbsp;                                                                          |
-| Slots                 | 1-6                                         | 1-6                                                                             |
+- `src/pages/Index.tsx` wrapper: replace fixed canvas size with a `ResizeObserver`-driven sizer that keeps a 16:9 aspect and scales HUD text with `clamp()`.
+- `Hud.tsx` + all overlays: wrap in a container using `container queries` (`@container`) + `clamp(8px, 1.2vw, 14px)` font sizing. The tall controls list in `PauseOverlay` becomes scrollable (`overflow-y-auto max-h-[70vh]`) so the RESUME/MENU buttons are always visible.
+- All overlays use `inset-0 flex items-center justify-center p-4` with `max-w-[min(90vw,640px)]`.
+- Hotbar, lives, ammo reflow to a 2-column grid under ~900px width.
 
+## 3. Boss system overhaul (10 unique bosses + arenas)
 
-NOTE: MAKE SURE ALL IMAGES ARE LOCAL AND NOT USING ANY EXTERNAL AS MUCH AS POSSIBLE, IF ITS GOING TO AFFECT QUALITY TELL ME WHERE YOU GOT EACH AND HOW TO IMPLEMENT THEM IN MY PYTHON CE PUGAME RECREATION
+Bosses spawn at fixed landmark distances: **first at 555m, then every 555m** (555, 1110, 1665, 2220, …). The 10 bosses from `BOSS_CONCEPTS.pdf` rotate in order, then loop with scaled stats.
 
-&nbsp;
+### Arena lock
+When player enters a boss landmark:
+- An invisible L/R wall spawns at arena edges (±600px from boss anchor).
+- Normal enemy/tide spawning is paused inside the arena.
+- Camera auto-scroll pauses — the runner becomes a bounded arena fight.
+- On boss death: walls drop, tide resumes, camera resumes, boss explodes into loot.
 
-Conflicts resolved:
+### Bosses (from concept PDF)
 
-- W now multiplexes: if overlapping a ladder → climb up; otherwise → jump (mirrors SPACE).
-- P collided with pause → Pause moves to **ESC**.
-- Q collided with dash & old Misc A → Misc A moves to **O**, dash takes Q.
-- E collided with parry & old Misc B → Misc B moves to **P**, parry takes E.
+| # | Name | HP / Shield | Speed | Key moves | Special drop |
+|---|---|---|---|---|---|
+| 1 | Megger Knight | 2500 | 7 | Slam-stun, 1.5s charge leap | **Spiked Gauntlets** (melee + long-jump) |
+| 2 | Ahyah Omis | 1500 | 17 | Sniper, Pocket Sand (2s blur), Roll | **Golden AWP** |
+| 3 | Terrorist | 3000 | 20 | Grenade cluster, Rocket, Rex-Splode on death (200 dmg) | **Big Red Button** (nuke, 7min CD) |
+| 4 | Weakest Touhou Enemy | 4000 / 555 shield | 20/26 | Machine gun 30-burst, Blast Spam, Final Flash beam <10% | **Wand Beamer** |
+| 5 | Aegis | 2500 / 3000 shield | 15/30 | Directional 95% shield, Shield Ram | **Shield of Aegis** (hold-melee block, triple-tap ram) |
+| 6 | Bum Ahh Commander | 8888 / 5000 shield | 0 | Summons Minion1/BigBrute/ChainedGiant; Desperate <20% | **Backup Bells** (summon 2 minions+brute+giant allies, 19s) |
+| 7 | Generic Vampire | 10000 | 40 | Claw bleed, Piercing Blood, Goy Dash lifesteal 500 | **Kusarigama** (hook + lifesteal 25) |
+| 8 | Dude Person's Inferior Imitation | 9999 / 999.9 shield | 67 | Enfeeble punch, Surprise (truck/rock, -40% maxHP), Pistol <10% | **Star** (cosmetic sparkle trail) |
+| 9 | Dr. Sighe Yan. Tiiestte | 4200 / 4200×3 regen shield | 15 (+15/break) | Potion (status), Zap, Iron Jotunn minion <20% | **Potion Launcher** |
+| 10 | The Evilest Strongest Boss O.A.T. | 25000 / 1000×5 regen | 20 (+11/break) | Combines all prior boss attacks; red sky | **The Exiled** (permanent ally, 6767 HP, greatsword + solar/lunar beam) |
 
-Files: `src/game/engine.ts` (`onKeyDown`/`onKeyUp` switch, `description` string), `src/components/game/Hud.tsx` (hotbar slot labels: ranged [1-6], melee [R], misc [O]/[P]), `src/components/game/PauseOverlay.tsx` (controls list), `src/components/game/StartScreen.tsx` (footer controls strip), `src/components/game/InventoryOverlay.tsx` (labels "MISC [O] [P]", "MELEE [R]", "FIRE F", and CLOSE hint = TAB).
+### Shared boss behavior
+- Unique death sound: loaded from new `src/assets/audio/sfx_boss_death.mp3` (from uploaded `Roblox_tower_battles_void_s_death_sound.mp3`). Replaces regular `sfx_death` for bosses only.
+- On death drops (always): 1 special weapon/ally + random bundle of **coins (50-150), medkit, random powerup, 1-3 crystals, 1-2 tokens**.
+- Health bar banner at top of screen while boss is alive, with boss name + shield segment if applicable.
+- Unique pixel sprite per boss drawn procedurally on the canvas (no external PNGs needed — styled by color palette + silhouette per concept descriptions).
 
-### 2. Roll gets its own 2-charge meter (twice as slow as dash)
+### Unique weapon/ally behaviors added to `weapons.ts` / engine
+- `spiked_gauntlets`: melee class, +long-jump when equipped in melee slot.
+- `golden_awp`: ranged, 2× AWP damage + faster.
+- `big_red_button`: misc deploy, screen-wide nuke, 420s cooldown.
+- `wand_beamer`: ranged, fast AOE beams.
+- `shield_of_aegis`: melee, hold R = 80% damage reduction, triple-tap R = ram.
+- `backup_bells`: misc, summons friendly mob pack for 19s.
+- `kusarigama`: melee, hook pull + 25 lifesteal.
+- `star`: misc, cosmetic sparkle trail (no damage).
+- `potion_launcher`: ranged, random status effects.
+- Ally `the_exiled`: permanent ally entity (tracked in `Game.allies[]`), attacks with greatsword + solar/lunar beams.
 
-- Add `rollCharges` (max 2) and `rollRecharge` (4s, dash is 2s) to engine.
-- `Z` now triggers roll standalone (no S+SHIFT). Roll consumes a roll charge instead of a dash charge.
-- Recharge logic mirrors dash but with 4s interval.
-- HUD: under the existing `DASH x/2` add `ROLL x/2` line (same style, dimmer color).
-- Stats payload exposes `rollCharges`, `rollCdNext`.
+## 4. Shop polish (Main, Augment, Ally, Shady)
 
-### 3. Enemies climb ladders better (all difficulties)
+- **Main Shop** (`ShopOverlay.tsx`):
+  - Click item or press **ENTER** to buy selected; arrow keys navigate grid.
+  - Pagination: 8 items per page, `← PREV PAGE / NEXT PAGE →` footer (A/D keys).
+- **Ally Shop** (`AllyOverlay.tsx`):
+  - Horizontal scroll roster (mouse wheel + left/right arrows) — "MORE →" hint when overflow.
+  - Right pane shows **description + stats** of currently focused ally (HP, damage, behavior text).
+- **Augment Shop** (`AugmentOverlay.tsx`): same pagination pattern, Crystal currency.
+- **Shady Guy** (`ShadyOverlay.tsx`): gamble / curse pacts, Token currency.
+- Every shop item gets a **distinct 16×16 procedural pixel icon** drawn via small canvas sprite functions (no external assets).
+- Currency rarity unchanged from Wave 7 (Crystals ~1%, Tokens ~3%).
 
-Current logic only ascends when player is above. Improve:
+## 5. Audio
 
-- Enemies now seek the nearest ladder when there's a vertical gap to the player (>40 px) and the player is reachable via that ladder's top platform. Apply gentle horizontal nudge toward ladder x if within ~140 px.
-- Climb speed scaled per difficulty but minimum 120 px/s on Dunce (was effectively gated). Cap with `vy = -clamp(climbSpeed)`.
-- Allow descending too (player below + on ladder → vy = +130).
-- Snap enemy x toward ladder center while climbing so they don't fall off.
+- Add `sfx_boss_death.mp3` to `src/assets/audio/` (copied from the uploaded Tower Battles sound).
+- `audio.ts`: new SFX key `bossDeath`; engine plays it on any boss death instead of regular `death`.
 
-### 4. Python recreation parity
+## 6. Python recreation parity (PRIORITY)
 
-Update `python_recreation/game.py` + `README.md`:
+Update `python_recreation/`:
+- `game.py` — mirror all Wave 7 + Wave 8 systems: rebindable keys via a `KEYBINDS` dict loaded from `keybinds.json`, responsive window (`pygame.RESIZABLE`), 10 bosses with arena walls, unique drops, boss death sound, polished shop menus (pages + scroll).
+- `keybinds.json` — default map, user-editable.
+- `IMPLEMENTATION_GUIDE.txt` — step-by-step: folder layout, where to drop sprites (`assets/sprites/bosses/megger_knight.png`, etc.), how to wire sounds (`assets/sfx/boss_death.wav`), how to swap procedural sprites for hand-drawn ones, and how to extend the keybind system.
+- `SPRITE_GUIDE.txt` — per-boss/per-item description + expected filename so the user or an artist can drop PNGs in.
+- `SOUND_GUIDE.txt` — list of every SFX filename the game looks for and what triggers it.
+- `README.md` — refreshed controls + new features summary.
 
-- Same key map (pygame: K_q dash, K_z roll, K_e parry, K_o miscA, K_p miscB, K_w = jump or climb up, K_ESCAPE = pause).
-- Same roll-meter logic.
-- Same improved enemy ladder seeking.
-- Update README control list.
+All four text guides will be written in plain readable English, no code jargon where avoidable, so the user can follow them without dev experience.
 
-### 5. Packaged Python drop (delivered as artifact)
+## Technical details (for reference)
 
-Build `/mnt/documents/python_build_v2.zip` containing:
+- Files created:
+  - `src/components/game/SettingsOverlay.tsx`
+  - `src/components/game/ShopOverlay.tsx`
+  - `src/components/game/AllyOverlay.tsx`
+  - `src/components/game/AugmentOverlay.tsx`
+  - `src/components/game/ShadyOverlay.tsx`
+  - `src/components/game/BossHealthBar.tsx`
+  - `src/game/keybinds.ts` (load/save + default map)
+  - `src/game/bosses.ts` (10 boss definitions + AI state machines)
+  - `src/game/sprites.ts` (procedural pixel drawers for bosses/items/allies)
+  - `src/assets/audio/sfx_boss_death.mp3` (copied from upload)
+  - `python_recreation/keybinds.json`
+  - `python_recreation/IMPLEMENTATION_GUIDE.txt`
+  - `python_recreation/SPRITE_GUIDE.txt`
+  - `python_recreation/SOUND_GUIDE.txt`
+- Files modified:
+  - `src/game/engine.ts` (keybind lookup, arena lock, boss spawn at 555m intervals, loot table, ally list, responsive virtual resolution)
+  - `src/game/weapons.ts` (+10 unique boss drops)
+  - `src/game/audio.ts` (+bossDeath key)
+  - `src/components/game/Hud.tsx` (responsive clamp sizing, boss bar, status icons above player stays in engine)
+  - `src/components/game/PauseOverlay.tsx` (scrollable + SETTINGS button)
+  - `src/components/game/StartScreen.tsx` (SETTINGS button)
+  - `src/pages/Index.tsx` (ResizeObserver sizing)
+  - `python_recreation/game.py`, `README.md`
 
-```text
-python_build/
-├── game.py                  # full standalone Pygame port (current python_recreation/game.py)
-├── README.md                # how to run + controls
-├── ASSET_GUIDE.txt          # where to drop external assets
-└── assets/
-    ├── sfx/                 # empty placeholder folders with .gitkeep + notes
-    │   ├── shoot.wav        (placeholder readme)
-    │   ├── hit.wav
-    │   ├── jump.wav
-    │   ├── dash.wav
-    │   ├── parry.wav
-    │   └── death.wav
-    ├── music/
-    │   └── track1.ogg
-    └── fonts/
-        └── pixel.ttf
-```
-
-`ASSET_GUIDE.txt` will explain:
-
-- Drop your sfx files into `assets/sfx/` with the exact filenames listed (shoot.wav, hit.wav, jump.wav, dash.wav, roll.wav, parry.wav, throw.wav, explode.wav, death.wav). Game auto-loads any that exist; missing files fall back to procedural beeps.
-- Music goes in `assets/music/` as `.ogg` or `.wav`; first file found is looped.
-- Optional pixel font in `assets/fonts/pixel.ttf` overrides default.
-- Keep the `assets/` folder next to `game.py`.
-
-The `game.py` will be patched with a small `load_asset()` helper that checks for these paths and silently no-ops if absent (no crashes if user runs without assets).
-
-Also emit the zip via `<lov-artifact>` so it's downloadable from chat.
-
-### Technical notes
-
-- HUD lives counter & misc-count code untouched; only label strings change.
-- The existing `S+SHIFT` roll path is removed from the dash branch and replaced by an independent `Z` handler block above it.
-- `STARTING_MISC_A`/`STARTING_MISC_B` constants unchanged (5 each, totaled in `miscAmmo`).
 - No DB / Cloud changes.
-- No new external assets bundled — guide explains where the user adds their own.
+- No new external image assets — all boss/item sprites drawn procedurally from concept descriptions.
 
-### Out of scope
+## Out of scope
+- Hand-drawn PNG boss art (guide included so user can add later).
+- Mobile touch controls (keybind system is keyboard only; mobile remains a stretch goal).
+- Packaged `python_build_v3.zip` — will be regenerated at end of implementation and delivered as an artifact.
 
-- Rebindable controls UI (stays hard-coded).
-- Visual redesign beyond adding the ROLL bar entry.
+---
+
+Approve to proceed, or tell me what to trim/expand.
