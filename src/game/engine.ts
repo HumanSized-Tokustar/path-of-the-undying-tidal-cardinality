@@ -347,20 +347,27 @@ export class Game {
     switch (k) {
       case "a": this.input.left = true; break;
       case "d": this.input.right = true; break;
-      case "w": this.input.up = true; break;
+      case "w": {
+        // W = climb up if on ladder, otherwise jump (mirrors SPACE)
+        this.input.up = true;
+        const onLadder = !!this.findOverlappingLadder();
+        if (!onLadder) { this.input.jump = true; this.input.jumpPressed = true; }
+        break;
+      }
       case "s": this.input.down = true; break;
       case " ": this.input.jump = true; this.input.jumpPressed = true; break;
-      case "shift": this.input.dash = true; this.input.dashPressed = true; break;
+      case "q": this.input.dash = true; this.input.dashPressed = true; break;       // DASH
+      case "z": (this as any).rollPressed = true; break;                              // ROLL
       case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "q": this.input.miscA = true; this.input.miscAPressed = true; break;
-      case "e": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "o": this.input.miscA = true; this.input.miscAPressed = true; break;     // MISC A
+      case "p": this.input.miscB = true; this.input.miscBPressed = true; break;     // MISC B
       case "r": this.input.melee = true; this.input.meleePressed = true; break;
       case "x": this.input.shield = true; this.input.shieldPressed = true; break;
       case "g": this.input.overdrivePressed = true; break;
-      case "c": this.input.parryPressed = true; break;
+      case "e": this.input.parryPressed = true; break;                                // PARRY
       case "v": this.input.grab = true; this.input.grabPressed = true; break;
       case "tab": this.input.inventoryPressed = true; break;
-      case "p": this.input.pausePressed = true; break;
+      case "escape": this.input.pausePressed = true; break;                           // PAUSE
       case "1": case "2": case "3": case "4": case "5": case "6":
         this.input.slotPressed[parseInt(k) - 1] = true; break;
     }
