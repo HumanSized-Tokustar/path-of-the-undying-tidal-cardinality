@@ -380,11 +380,9 @@ export class Game {
     }
   };
   private onKeyUp = (e: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { actionFor, normalizeKey } = require("./keybinds") as typeof import("./keybinds");
-    const k = normalizeKey(e.key);
+    const k = kbNormalize(e.key);
     this.keys.delete(k);
-    const action = actionFor(k);
+    const action = kbActionFor(k);
     if (!action) return;
     switch (action) {
       case "moveLeft": this.input.left = false; break;
