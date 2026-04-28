@@ -717,6 +717,28 @@ class Game:
 
             espd = self.diff_enemy_speed()
             if not e["flying"]:
+                # ---- Smart ladder seeking ----
+                on_ladder = None
+                for p in self.platforms:
+                    if p["kind"] != "ladder": continue
+                    if (e["x"]+e["w"]/2 > p["x"] and e["x"]-e["w"]/2 < p["x"]+p["w"]
+                        and e["y"]+e["h"] > p["y"] - 4 and e["y"] < p["y"] + p["h"] + 30):
+                        on_ladder = p; break
+                dy_to_player = self.py - e["y"]
+                if on_ladder:
+                    center = on_ladder["x"] + on_ladder["w"]/2
+                    e["x"] += (1 if center > e["x"] else -1) * min(80*edt, abs(center - e["x"]))
+                    if dy_to_player < -40: e["vy"] = -160; e["on_ground"] = False
+                    elif dy_to_player > 60: e["vy"] = 160; e["on_ground"] = False
+                elif abs(dy_to_player) > 50:
+                    nearest = None; nd = 220
+                    for p in self.platforms:
+                        if p["kind"] != "ladder": continue
+                        d = abs((p["x"]+p["w"]/2) - (e["x"]+e["w"]/2))
+                        if d < nd: nd = d; nearest = p
+                    if nearest is not None:
+                        target = nearest["x"] + nearest["w"]/2
+                        e["vx"] = (1 if target > e["x"]+e["w"]/2 else -1) * 80 * espd
                 e["vy"] += 1700 * edt
                 e["y"] += e["vy"] * edt
                 if e["y"] + e["h"] >= GROUND_Y:
