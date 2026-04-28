@@ -69,7 +69,8 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
               </div>
             </div>
             <div className="mt-6 text-[8px] text-foreground/50 leading-relaxed">
-              WASD MOVE · SPACE JUMP×2 · SHIFT DASH (S+SHIFT ROLL) · F FIRE<br />Q/E MISC (HOLD) · R MELEE · C PARRY · V GRAB (HOLD) · X SHIELD · G OVERDRIVE · TAB INV
+              WASD MOVE · SPACE/W JUMP×2 · Q DASH · Z ROLL · F FIRE<br />
+              O/P MISC (HOLD) · R MELEE · E PARRY · V GRAB (HOLD) · X SHIELD · G OVERDRIVE · TAB INV · ESC PAUSE
             </div>
           </>
         )}

@@ -19,12 +19,12 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
       <div className="absolute top-3 left-3 space-y-1.5 w-[280px]">
         <SegBar label={`HP ${Math.ceil(stats.hp)}/${stats.maxHp}`} pct={hpPct} color="hsl(var(--hud-hp))" />
         <SegBar
-          label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (I)"}
+          label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (X)"}
           pct={stats.shieldActive ? 100 : ((6 - stats.shieldCd) / 6) * 100}
           color="hsl(var(--hud-shield))"
         />
         <SegBar
-          label={stats.overdriveActive ? `OVERDRIVE ${stats.overdriveTime.toFixed(1)}s` : `OVERDRIVE (F) ${odPct.toFixed(0)}%`}
+          label={stats.overdriveActive ? `OVERDRIVE ${stats.overdriveTime.toFixed(1)}s` : `OVERDRIVE (G) ${odPct.toFixed(0)}%`}
           pct={stats.overdriveActive ? (stats.overdriveTime / 6) * 100 : odPct}
           color="hsl(var(--hud-overdrive))"
         />
@@ -32,6 +32,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
           <span>AMMO {stats.ammo}</span>
           <span>● MISC {miscCount}</span>
           <span>● DASH {stats.dashCharges}/2</span>
+          <span className="text-[#7be0ff]">● ROLL {(stats as any).rollCharges ?? 2}/2</span>
         </div>
         <div className="flex gap-1 mt-1">
           <span className="text-[9px] text-[#fff7d6] mr-1">LIVES</span>
@@ -97,16 +98,16 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
           })}
         </div>
         <div className="w-12 h-14 border-2 border-[#a83af0] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-          <div className="text-[8px] text-[#fff7d6]">[L]</div>
+          <div className="text-[8px] text-[#fff7d6]">[R]</div>
           <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[meleeId]?.color }}>{(WEAPONS[meleeId]?.name ?? "KNIFE").slice(0,6).toUpperCase()}</div>
         </div>
         <div className="flex gap-1.5">
           <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-            <div className="text-[8px] text-[#fff7d6]">[K]</div>
+            <div className="text-[8px] text-[#fff7d6]">[O]</div>
             <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscAId]?.color }}>{(WEAPONS[miscAId]?.name ?? "GRENADE").slice(0,6).toUpperCase()}</div>
           </div>
           <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-            <div className="text-[8px] text-[#fff7d6]">[O]</div>
+            <div className="text-[8px] text-[#fff7d6]">[P]</div>
             <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscBId]?.color }}>{(WEAPONS[miscBId]?.name ?? "SMOKE").slice(0,6).toUpperCase()}</div>
           </div>
         </div>

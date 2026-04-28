@@ -15,7 +15,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
   const targetLabel =
     target.kind === "ranged" ? `RANGED [${target.index + 1}]` :
     target.kind === "melee"  ? "MELEE [R]" :
-    target.kind === "miscA"  ? "MISC [Q]" : "MISC [E]";
+    target.kind === "miscA"  ? "MISC [O]" : "MISC [P]";
 
   const equip = (wid: WeaponId) => {
     const w = WEAPONS[wid];
@@ -42,7 +42,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
           <h2 className="text-[#ffd84a] text-[20px]" style={{ textShadow: "2px 2px 0 #1a2342" }}>INVENTORY</h2>
           <button onClick={() => game.resume()}
             className="text-[#fff7d6] text-[10px] border border-[#fff7d6]/60 px-2 py-1 hover:bg-[#fff7d6]/20">
-            CLOSE (Y)
+            CLOSE (TAB)
           </button>
         </div>
 
@@ -72,18 +72,18 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
             {/* MELEE row */}
             <div className="text-[8px] text-[#d8e2ff] mb-1">MELEE [R]</div>
             <div className="flex gap-2 mb-3">
-              <SlotBtn wid={inv.melee} label="[L]" accent="#d8e2ff"
+              <SlotBtn wid={inv.melee} label="[R]" accent="#d8e2ff"
                 active={target.kind === "melee"}
                 onClick={() => setTarget({ kind: "melee" })} />
             </div>
 
             {/* MISC row */}
-            <div className="text-[8px] text-[#ff8c42] mb-1">MISC [Q] [E] · hold to charge throw</div>
+            <div className="text-[8px] text-[#ff8c42] mb-1">MISC [O] [P] · hold to charge throw</div>
             <div className="flex gap-2 mb-4">
-              <SlotBtn wid={inv.miscA} label="[K]" accent="#ff8c42"
+              <SlotBtn wid={inv.miscA} label="[O]" accent="#ff8c42"
                 active={target.kind === "miscA"}
                 onClick={() => setTarget({ kind: "miscA" })} />
-              <SlotBtn wid={inv.miscB} label="[O]" accent="#ff8c42"
+              <SlotBtn wid={inv.miscB} label="[P]" accent="#ff8c42"
                 active={target.kind === "miscB"}
                 onClick={() => setTarget({ kind: "miscB" })} />
             </div>

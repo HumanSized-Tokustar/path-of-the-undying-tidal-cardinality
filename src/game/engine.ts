@@ -147,6 +147,7 @@ export interface GameStats {
   shieldActive: boolean; shieldCd: number;
   overdriveBar: number; overdriveActive: boolean; overdriveTime: number;
   dashCharges: number; dashCdNext: number;
+  rollCharges: number; rollCdNext: number;
   kills: number; bossKills: number;
   timeAlive: number;
   rank: string; rankColor: string;
@@ -187,6 +188,7 @@ export class Game {
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
   private dashTrail: { x:number; y:number; life:number }[] = [];
   private rolling = false; private rollTime = 0;
+  private rollCharges = 2; private rollRecharge = 0;
   private slamming = false;
   private dropThrough = 0; // disable jump-through landings briefly
   private shieldActive = false; private shieldTime = 0; private shieldCd = 0;
@@ -227,7 +229,7 @@ export class Game {
   private enemiesSpawned = 0;
   private warning: string | null = null;
   private warnTimer = 0;
-  private description = "WASD MOVE • SPACE JUMP×2 (S+SPACE drop, W on ladder) • SHIFT DASH (S+SHIFT ROLL) • F FIRE • R MELEE • Q/E THROW MISC • C PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • P PAUSE";
+  private description = "WASD MOVE • SPACE/W JUMP×2 (S+SPACE drop, W on ladder = climb) • Q DASH • Z ROLL • F FIRE • R MELEE • O/P THROW MISC • E PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • ESC PAUSE";
   private spawnTier = 0;        // grows by 1 per 111m for the tide system
   private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
   private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
@@ -346,20 +348,27 @@ export class Game {
     switch (k) {
       case "a": this.input.left = true; break;
       case "d": this.input.right = true; break;
-      case "w": this.input.up = true; break;
+      case "w": {
+        // W = climb up if on ladder, otherwise jump (mirrors SPACE)
+        this.input.up = true;
+        const onLadder = !!this.findOverlappingLadder();
+        if (!onLadder) { this.input.jump = true; this.input.jumpPressed = true; }
+        break;
+      }
       case "s": this.input.down = true; break;
       case " ": this.input.jump = true; this.input.jumpPressed = true; break;
-      case "shift": this.input.dash = true; this.input.dashPressed = true; break;
+      case "q": this.input.dash = true; this.input.dashPressed = true; break;       // DASH
+      case "z": (this as any).rollPressed = true; break;                              // ROLL
       case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "q": this.input.miscA = true; this.input.miscAPressed = true; break;
-      case "e": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "o": this.input.miscA = true; this.input.miscAPressed = true; break;     // MISC A
+      case "p": this.input.miscB = true; this.input.miscBPressed = true; break;     // MISC B
       case "r": this.input.melee = true; this.input.meleePressed = true; break;
       case "x": this.input.shield = true; this.input.shieldPressed = true; break;
       case "g": this.input.overdrivePressed = true; break;
-      case "c": this.input.parryPressed = true; break;
+      case "e": this.input.parryPressed = true; break;                                // PARRY
       case "v": this.input.grab = true; this.input.grabPressed = true; break;
       case "tab": this.input.inventoryPressed = true; break;
-      case "p": this.input.pausePressed = true; break;
+      case "escape": this.input.pausePressed = true; break;                           // PAUSE
       case "1": case "2": case "3": case "4": case "5": case "6":
         this.input.slotPressed[parseInt(k) - 1] = true; break;
     }
@@ -370,13 +379,13 @@ export class Game {
     switch (k) {
       case "a": this.input.left = false; break;
       case "d": this.input.right = false; break;
-      case "w": this.input.up = false; break;
+      case "w": this.input.up = false; this.input.jump = false; break;
       case "s": this.input.down = false; break;
       case " ": this.input.jump = false; break;
-      case "shift": this.input.dash = false; break;
+      case "q": this.input.dash = false; break;
       case "f": this.input.fireR = false; break;
-      case "q": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "e": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "o": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "p": this.input.miscB = false; this.input.miscBReleased = true; break;
       case "r": this.input.melee = false; break;
       case "x": this.input.shield = false; break;
       case "v": this.input.grab = false; this.input.grabReleased = true; break;
@@ -400,6 +409,8 @@ export class Game {
     this.lives = this.maxLives;
     this.slowFall = 0;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
+    this.rollCharges = 2; this.rollRecharge = 0;
+    (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
     this.camX = 0; this.worldX = 0;
@@ -564,22 +575,23 @@ export class Game {
     else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
     this.pvx += conveyorPush;
 
-    // Dash (with i-frames)
-    if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
-      if (this.input.down && this.pOnGround) {
-        this.rolling = true;
-        this.rollTime = 0.56;          // 2× dash duration
-        this.pInv = Math.max(this.pInv, 0.56); // i-frames whole roll
-        this.dashCharges--;
-        if (this.dashRecharge <= 0) this.dashRecharge = 2;
-      }
-      else {
-        this.dashTime = 0.28; // longer dash
-        this.pInv = Math.max(this.pInv, 0.28); // i-frames whole dash
-        this.dashCharges--;
-        if (this.dashRecharge <= 0) this.dashRecharge = 2;
-      }
+    // Dash (Q) — with i-frames
+    if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
+      this.dashTime = 0.28;
+      this.pInv = Math.max(this.pInv, 0.28);
+      this.dashCharges--;
+      if (this.dashRecharge <= 0) this.dashRecharge = 2;
     }
+    // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
+    const rollPressed = (this as any).rollPressed as boolean;
+    if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
+      this.rolling = true;
+      this.rollTime = 0.56;
+      this.pInv = Math.max(this.pInv, 0.56);
+      this.rollCharges--;
+      if (this.rollRecharge <= 0) this.rollRecharge = 4; // 2× dash recharge
+    }
+    (this as any).rollPressed = false;
     if (this.dashTime > 0) {
       this.pvx = this.pFacing * speed * 3.4;
       this.dashTime -= dt;
@@ -609,6 +621,13 @@ export class Game {
       if (this.dashRecharge <= 0 && this.dashCharges < 2) {
         this.dashCharges++;
         if (this.dashCharges < 2) this.dashRecharge = 2;
+      }
+    }
+    if (this.rollRecharge > 0) {
+      this.rollRecharge -= dt;
+      if (this.rollRecharge <= 0 && this.rollCharges < 2) {
+        this.rollCharges++;
+        if (this.rollCharges < 2) this.rollRecharge = 4;
       }
     }
 
@@ -1454,16 +1473,33 @@ export class Game {
 
       const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
-        // Climb ladders if overlapping one and player is higher than the enemy
-        let onLadder = false;
+        // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
+        let onLadder: Platform | null = null;
         for (const p of this.platforms) {
           if (p.kind !== "ladder") continue;
           if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w &&
-              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = true; break; }
+              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = p; break; }
         }
-        if (onLadder && this.py + this.ph < e.y + 4) {
-          e.vy = -150;
-          e.onGround = false;
+        const dyToPlayer = this.py - e.y;
+        if (onLadder) {
+          // Snap toward ladder center so they don't fall off
+          const center = onLadder.x + onLadder.w / 2;
+          e.x += Math.sign(center - e.x) * Math.min(80 * dt, Math.abs(center - e.x));
+          if (dyToPlayer < -40) { e.vy = -160; e.onGround = false; }     // climb up
+          else if (dyToPlayer > 60) { e.vy = 160; e.onGround = false; }  // climb down
+        } else if (Math.abs(dyToPlayer) > 50) {
+          // Seek nearest ladder within ~220px horizontally
+          let nearest: Platform | null = null; let nd = 220;
+          for (const p of this.platforms) {
+            if (p.kind !== "ladder") continue;
+            const d = Math.abs((p.x + p.w/2) - (e.x + e.w/2));
+            if (d < nd) { nd = d; nearest = p; }
+          }
+          if (nearest) {
+            const target = nearest.x + nearest.w/2;
+            const dir = Math.sign(target - (e.x + e.w/2));
+            e.vx = dir * 80 * espd;
+          }
         }
         e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
@@ -1637,6 +1673,7 @@ export class Game {
       shieldActive: this.shieldActive, shieldCd: Math.max(0, this.shieldCd),
       overdriveBar: this.odBar, overdriveActive: this.odActive, overdriveTime: Math.max(0, this.odTime),
       dashCharges: this.dashCharges, dashCdNext: Math.max(0, this.dashRecharge),
+      rollCharges: this.rollCharges, rollCdNext: Math.max(0, this.rollRecharge),
       kills: this.kills, bossKills: this.bossKills,
       timeAlive: this.timeAlive,
       rank: rank.label, rankColor: rank.color,

@@ -8,18 +8,19 @@ pip install pygame
 python python_recreation/game.py
 ```
 
-## Controls
-- WASD — Move (W on ladder = climb, S on ladder = down)
-- SPACE — Jump (×2). S+SPACE drop through platform.
-- SHIFT — Dash. **S+SHIFT — Roll** (spinning ball, 2× dash duration, knocks enemies back).
+## Controls (Wave 6)
+- WASD — Move (W on ladder = climb up, S on ladder = climb down)
+- SPACE **or W** — Jump (×2). S+SPACE drop through platform.
+- **Q — Dash** (2 charges, 2s recharge each)
+- **Z — Roll** (2 charges, **4s recharge**, spinning ball, 2× dash length, knocks enemies back, full i-frames)
 - F — Fire ranged
 - R — Melee
-- Q — Misc A, E — Misc B (hold to charge throw)
-- C — Parry (negates ranged + melee damage)
+- **O — Misc A**, **P — Misc B** (hold to charge throw)
+- **E — Parry** (negates ranged + melee damage)
 - V — Grab nearest enemy. Hold V to charge a stronger/farther throw.
 - X — Shield, G — Overdrive
 - 1-6 switch ranged
-- TAB inventory, P pause
+- TAB inventory, ESC pause
 
 ## Mechanics
 - Distance-based pace: 15 m/s base, +10 per 300m, cap 105.
@@ -29,3 +30,4 @@ python python_recreation/game.py
 - Ladders attach to the side of base platforms and reach the ground; player and enemies can climb.
 - Charged grab/throw: hold V while grabbing — longer hold = farther throw + bigger AoE.
 - Roll knocks enemies away and grants i-frames the whole duration.
+- Enemies actively seek the nearest ladder when there's a vertical gap to the player and climb up or down regardless of difficulty.

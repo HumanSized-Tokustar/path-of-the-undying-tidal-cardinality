@@ -173,6 +173,7 @@ class Game:
         self.lives = 3; self.max_lives = 3
         self.p_inv = 0.0
         self.dash_charges = 2; self.dash_recharge = 0; self.dash_time = 0
+        self.roll_charges = 2; self.roll_recharge = 0
         self.shield_active = False; self.shield_time = 0; self.shield_cd = 0
         self.od_bar = 0; self.od_active = False; self.od_time = 0
         self.slow_fall = 0
@@ -352,7 +353,7 @@ class Game:
         w = WEAPONS[wid]
         cd_attr = "fire_cd_misc_a" if is_a else "fire_cd_misc_b"
         ch_attr = "misc_a_charge"  if is_a else "misc_b_charge"
-        key = pygame.K_q if is_a else pygame.K_e
+        key = pygame.K_o if is_a else pygame.K_p
         held = keys[key]
         # Deploy
         if key in pressed_set and w["deploy"] and getattr(self, cd_attr) <= 0:
@@ -421,19 +422,19 @@ class Game:
         elif keys[pygame.K_d]: self.p_facing = 1; self.pvx = speed
         else: self.pvx = 0
 
-        # Dash / Roll (S+SHIFT)
-        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
-            if keys[pygame.K_s] and self.p_on_ground:
-                self.rolling = True
-                self.roll_time = 0.56          # 2× dash duration
-                self.p_inv = max(self.p_inv, 0.56)
-                self.dash_charges -= 1
-                if self.dash_recharge <= 0: self.dash_recharge = 2
-            else:
-                self.dash_time = 0.28
-                self.p_inv = max(self.p_inv, 0.28)
-                self.dash_charges -= 1
-                if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Dash (Q) — independent meter, 2 charges, 2s recharge
+        if pygame.K_q in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
+            self.dash_time = 0.28
+            self.p_inv = max(self.p_inv, 0.28)
+            self.dash_charges -= 1
+            if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Roll (Z) — independent meter, 2 charges, 4s recharge (2× dash)
+        if pygame.K_z in pressed_set and self.roll_charges > 0 and not self.rolling and self.dash_time <= 0:
+            self.rolling = True
+            self.roll_time = 0.56
+            self.p_inv = max(self.p_inv, 0.56)
+            self.roll_charges -= 1
+            if self.roll_recharge <= 0: self.roll_recharge = 4
         if self.dash_time > 0:
             self.pvx = self.p_facing * speed * 3.4
             self.dash_time -= dt
@@ -455,9 +456,17 @@ class Game:
             if self.dash_recharge <= 0 and self.dash_charges < 2:
                 self.dash_charges += 1
                 if self.dash_charges < 2: self.dash_recharge = 2
+        if self.roll_recharge > 0:
+            self.roll_recharge -= dt
+            if self.roll_recharge <= 0 and self.roll_charges < 2:
+                self.roll_charges += 1
+                if self.roll_charges < 2: self.roll_recharge = 4
 
-        # Jump
+        # Jump — SPACE OR W (W only when not on a ladder)
+        on_ladder_for_jump = self.find_overlapping_ladder() is not None
         if pygame.K_SPACE in pressed_set and self.p_jumps < self.max_jumps:
+            self.pvy = -560; self.p_jumps += 1
+        elif pygame.K_w in pressed_set and not on_ladder_for_jump and self.p_jumps < self.max_jumps:
             self.pvy = -560; self.p_jumps += 1
 
         # Slow-fall (antigrav)
@@ -572,7 +581,7 @@ class Game:
                     self.parry_window = 0.35; break
         else:
             self.parry_window -= dt
-        if pygame.K_c in pressed_set and self.parry_window > 0:
+        if pygame.K_e in pressed_set and self.parry_window > 0:
             for b in list(self.bullets):
                 if not b["friendly"] and math.hypot(b["x"]-cx, b["y"]-cy) < 90:
                     b["friendly"] = True; b["dmg"] *= 2
@@ -708,6 +717,28 @@ class Game:
 
             espd = self.diff_enemy_speed()
             if not e["flying"]:
+                # ---- Smart ladder seeking ----
+                on_ladder = None
+                for p in self.platforms:
+                    if p["kind"] != "ladder": continue
+                    if (e["x"]+e["w"]/2 > p["x"] and e["x"]-e["w"]/2 < p["x"]+p["w"]
+                        and e["y"]+e["h"] > p["y"] - 4 and e["y"] < p["y"] + p["h"] + 30):
+                        on_ladder = p; break
+                dy_to_player = self.py - e["y"]
+                if on_ladder:
+                    center = on_ladder["x"] + on_ladder["w"]/2
+                    e["x"] += (1 if center > e["x"] else -1) * min(80*edt, abs(center - e["x"]))
+                    if dy_to_player < -40: e["vy"] = -160; e["on_ground"] = False
+                    elif dy_to_player > 60: e["vy"] = 160; e["on_ground"] = False
+                elif abs(dy_to_player) > 50:
+                    nearest = None; nd = 220
+                    for p in self.platforms:
+                        if p["kind"] != "ladder": continue
+                        d = abs((p["x"]+p["w"]/2) - (e["x"]+e["w"]/2))
+                        if d < nd: nd = d; nearest = p
+                    if nearest is not None:
+                        target = nearest["x"] + nearest["w"]/2
+                        e["vx"] = (1 if target > e["x"]+e["w"]/2 else -1) * 80 * espd
                 e["vy"] += 1700 * edt
                 e["y"] += e["vy"] * edt
                 if e["y"] + e["h"] >= GROUND_Y:
@@ -1031,7 +1062,7 @@ class Game:
             col = (255,90,90) if i < self.lives else (58,74,114)
             s.blit(self.font.render("HEART", True, col), (10 + i*40, 42))
         # Currencies
-        s.blit(self.font.render(f"AMMO {self.ammo}  MISC {self.misc_ammo}  DASH {self.dash_charges}/2", True, (255,216,74)), (10, 60))
+        s.blit(self.font.render(f"AMMO {self.ammo}  MISC {self.misc_ammo}  DASH {self.dash_charges}/2  ROLL {self.roll_charges}/2", True, (255,216,74)), (10, 60))
         s.blit(self.font.render(f"COINS {self.coins}  TOKENS {self.tokens}  CRYS {self.crystals}", True, COLOR["text"]), (10, 76))
         # Distance + pace
         m = int(self.world_x / PX_PER_METER)
