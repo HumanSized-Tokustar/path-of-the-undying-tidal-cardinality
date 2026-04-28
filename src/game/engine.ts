@@ -478,11 +478,64 @@ export class Game {
     else if (this.phase === "inventory") { this.phase = "playing"; this.onPhaseChange(this.phase); this.last = performance.now(); }
   }
   resume() {
-    if (this.phase === "paused" || this.phase === "inventory") {
+    if (this.phase === "paused" || this.phase === "inventory" || this.phase === "shop") {
       this.phase = "playing";
       this.onPhaseChange(this.phase);
       this.last = performance.now();
     }
+  }
+  currentShopKind: ShopKind | null = null;
+  toggleShop() {
+    if (this.phase === "shop") { this.resume(); return; }
+    if (this.phase !== "playing") return;
+    // Find nearest landmark the player overlaps
+    const pCx = this.px + this.pw/2;
+    const near = this.landmarks.find(l => pCx >= l.x && pCx <= l.x + l.w && (l.kind === "main" || l.kind === "ally" || l.kind === "shady"));
+    if (!near) { this.flashDescription("No shop nearby."); return; }
+    this.currentShopKind = near.kind as ShopKind;
+    this.phase = "shop";
+    this.onPhaseChange(this.phase);
+  }
+  buyMainItem(id: string) {
+    const { MAIN_SHOP } = require("./shops") as typeof import("./shops");
+    const it = MAIN_SHOP.find(x => x.id === id); if (!it) return;
+    if (!this.spendCurrency(it.cost, it.currency)) return;
+    if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
+    if (it.consumable === "medkit") this.inventory.consumables.medkit++;
+    if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
+    if (it.grenades) this.pGrenades += it.grenades;
+    if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
+    audio.play("pickup");
+    this.flashDescription(`Bought ${it.name}`);
+    this.emitStats();
+  }
+  buyAlly(id: string) {
+    const { ALLIES } = require("./shops") as typeof import("./shops");
+    const a = ALLIES.find(x => x.id === id); if (!a) return;
+    if (!this.spendCurrency(a.cost, a.currency)) return;
+    (this as any).allies = (this as any).allies || [];
+    (this as any).allies.push({ def: a, x: this.px - 40, y: this.py, hp: a.hp, fireCd: 0 });
+    audio.play("pickup");
+    this.flashDescription(`Recruited ${a.name}`);
+    this.emitStats();
+  }
+  buyAugment(id: string) {
+    const { AUGMENT_SHOP } = require("./shops") as typeof import("./shops");
+    const a = AUGMENT_SHOP.find(x => x.id === id); if (!a) return;
+    if (this.inventory.augments.includes(id)) return;
+    if (!this.spendCurrency(a.cost, a.currency)) return;
+    this.inventory.augments.push(id);
+    // Apply simple effects immediately
+    if (id === "aug_hp_s") { this.pMaxHp += 15; this.pHp += 15; }
+    if (id === "aug_dash") { (this as any).pMaxDashCharges = ((this as any).pMaxDashCharges || 2) + 1; }
+    audio.play("pickup");
+    this.flashDescription(`Augment: ${a.name}`);
+    this.emitStats();
+  }
+  private spendCurrency(cost: number, cur: "coins"|"tokens"|"crystals"): boolean {
+    if (cur === "coins") { if (this.pCoins < cost) return false; this.pCoins -= cost; return true; }
+    if (cur === "tokens") { if (this.pTokens < cost) return false; this.pTokens -= cost; return true; }
+    if (this.pCrystals < cost) return false; this.pCrystals -= cost; return true;
   }
 
   // Equip APIs (class-aware)
