@@ -173,6 +173,7 @@ class Game:
         self.lives = 3; self.max_lives = 3
         self.p_inv = 0.0
         self.dash_charges = 2; self.dash_recharge = 0; self.dash_time = 0
+        self.roll_charges = 2; self.roll_recharge = 0
         self.shield_active = False; self.shield_time = 0; self.shield_cd = 0
         self.od_bar = 0; self.od_active = False; self.od_time = 0
         self.slow_fall = 0
