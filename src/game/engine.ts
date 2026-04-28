@@ -114,6 +114,19 @@ interface Enemy {
   legPhase: number;
   glintTimer: number;     // death glint
   dying: boolean;
+  // Wave 8 — boss extension
+  isBoss?: boolean;
+  bossId?: string;
+  bossName?: string;
+  shield?: number;
+  maxShield?: number;
+  shieldRegens?: number;  // remaining regens left
+  bossColor?: string;
+  bossAccent?: string;
+  bossEye?: string;
+  bossAbilities?: string[];
+  bossDropWeapon?: WeaponId | null;
+  bossDropAlly?: string | null;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
