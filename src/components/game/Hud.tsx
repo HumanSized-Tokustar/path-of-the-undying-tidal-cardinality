@@ -19,12 +19,12 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
       <div className="absolute top-3 left-3 space-y-1.5 w-[280px]">
         <SegBar label={`HP ${Math.ceil(stats.hp)}/${stats.maxHp}`} pct={hpPct} color="hsl(var(--hud-hp))" />
         <SegBar
-          label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (I)"}
+          label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (X)"}
           pct={stats.shieldActive ? 100 : ((6 - stats.shieldCd) / 6) * 100}
           color="hsl(var(--hud-shield))"
         />
         <SegBar
-          label={stats.overdriveActive ? `OVERDRIVE ${stats.overdriveTime.toFixed(1)}s` : `OVERDRIVE (F) ${odPct.toFixed(0)}%`}
+          label={stats.overdriveActive ? `OVERDRIVE ${stats.overdriveTime.toFixed(1)}s` : `OVERDRIVE (G) ${odPct.toFixed(0)}%`}
           pct={stats.overdriveActive ? (stats.overdriveTime / 6) * 100 : odPct}
           color="hsl(var(--hud-overdrive))"
         />
