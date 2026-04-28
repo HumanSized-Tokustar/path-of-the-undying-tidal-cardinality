@@ -3,7 +3,11 @@
 export type WeaponId =
   | "pistol" | "smg" | "shotgun" | "rifle" | "knife" | "grenade"
   | "awp" | "portalgun" | "rocket" | "minigun"
-  | "smoke" | "medkit" | "molotov" | "katana";
+  | "smoke" | "medkit" | "molotov" | "katana"
+  // Wave 8 — Boss drops
+  | "spiked_gauntlets" | "golden_awp" | "big_red_button" | "wand_beamer"
+  | "shield_of_aegis" | "backup_bells" | "kusarigama" | "star_cosmetic"
+  | "potion_launcher";
 
 export interface WeaponDef {
   id: WeaponId;
