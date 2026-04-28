@@ -1672,6 +1672,7 @@ export class Game {
       shieldActive: this.shieldActive, shieldCd: Math.max(0, this.shieldCd),
       overdriveBar: this.odBar, overdriveActive: this.odActive, overdriveTime: Math.max(0, this.odTime),
       dashCharges: this.dashCharges, dashCdNext: Math.max(0, this.dashRecharge),
+      rollCharges: this.rollCharges, rollCdNext: Math.max(0, this.rollRecharge),
       kills: this.kills, bossKills: this.bossKills,
       timeAlive: this.timeAlive,
       rank: rank.label, rankColor: rank.color,
