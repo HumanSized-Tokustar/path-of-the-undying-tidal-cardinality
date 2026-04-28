@@ -98,16 +98,16 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
           })}
         </div>
         <div className="w-12 h-14 border-2 border-[#a83af0] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-          <div className="text-[8px] text-[#fff7d6]">[L]</div>
+          <div className="text-[8px] text-[#fff7d6]">[R]</div>
           <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[meleeId]?.color }}>{(WEAPONS[meleeId]?.name ?? "KNIFE").slice(0,6).toUpperCase()}</div>
         </div>
         <div className="flex gap-1.5">
           <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-            <div className="text-[8px] text-[#fff7d6]">[K]</div>
+            <div className="text-[8px] text-[#fff7d6]">[O]</div>
             <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscAId]?.color }}>{(WEAPONS[miscAId]?.name ?? "GRENADE").slice(0,6).toUpperCase()}</div>
           </div>
           <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
-            <div className="text-[8px] text-[#fff7d6]">[O]</div>
+            <div className="text-[8px] text-[#fff7d6]">[P]</div>
             <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscBId]?.color }}>{(WEAPONS[miscBId]?.name ?? "SMOKE").slice(0,6).toUpperCase()}</div>
           </div>
         </div>
