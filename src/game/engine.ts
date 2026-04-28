@@ -378,13 +378,13 @@ export class Game {
     switch (k) {
       case "a": this.input.left = false; break;
       case "d": this.input.right = false; break;
-      case "w": this.input.up = false; break;
+      case "w": this.input.up = false; this.input.jump = false; break;
       case "s": this.input.down = false; break;
       case " ": this.input.jump = false; break;
-      case "shift": this.input.dash = false; break;
+      case "q": this.input.dash = false; break;
       case "f": this.input.fireR = false; break;
-      case "q": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "e": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "o": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "p": this.input.miscB = false; this.input.miscBReleased = true; break;
       case "r": this.input.melee = false; break;
       case "x": this.input.shield = false; break;
       case "v": this.input.grab = false; this.input.grabReleased = true; break;
