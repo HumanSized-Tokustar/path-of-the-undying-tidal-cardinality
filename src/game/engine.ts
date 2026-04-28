@@ -268,9 +268,13 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"|"boss"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
+  // Wave 8 — boss milestone tracker
+  private nextBossMilestone = 1;    // 1 => 555m, 2 => 1110m, ...
+  private bossActive: Enemy | null = null;
+  private arenaLeft = 0; private arenaRight = 0;
 
   private last = 0; private rafId = 0;
 
