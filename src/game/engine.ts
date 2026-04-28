@@ -1001,6 +1001,18 @@ export class Game {
     }
 
     this.warnTimer -= dt;
+    // Boss milestone spawn (every 555m)
+    const metersNowBoss = this.worldX / PX_PER_METER;
+    const dueMilestone = Math.floor(metersNowBoss / BOSS_SPAWN_INTERVAL_METERS) + 1;
+    if (!this.bossActive && dueMilestone > this.nextBossMilestone - 1 && metersNowBoss >= (this.nextBossMilestone) * BOSS_SPAWN_INTERVAL_METERS - 5) {
+      this.spawnBoss(this.nextBossMilestone);
+      this.nextBossMilestone++;
+    }
+    // Arena wall clamp while boss is alive
+    if (this.bossActive && !this.bossActive.dying) {
+      if (this.px < this.arenaLeft) this.px = this.arenaLeft;
+      if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
+    }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
       const m = Math.floor(this.worldX / PX_PER_METER);
