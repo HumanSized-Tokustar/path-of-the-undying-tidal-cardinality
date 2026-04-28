@@ -1319,6 +1319,40 @@ export class Game {
     void prevBottomDummy;
   }
 
+  private spawnBoss(milestone: number) {
+    const def = bossForMilestone(milestone);
+    const hpMul = this.diffEnemyHp();
+    const spawnX = this.camX + W * 0.6;
+    const spawnY = GROUND_Y - def.h;
+    const boss: Enemy = {
+      type: "brute" as EnemyType,
+      x: spawnX, y: spawnY, vx: 0, vy: 0,
+      w: def.w, h: def.h, hp: def.hp * hpMul, maxHp: def.hp * hpMul,
+      onGround: true, facing: -1,
+      fireCd: 1.5, aiTimer: 0, targetDx: 0, hurtFlash: 0,
+      burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
+      flying: false, baseY: spawnY,
+      jumpCd: 0, disabled: 0, grabbed: false,
+      thrown: false, throwVx: 0, throwVy: 0,
+      legPhase: 0, glintTimer: 0, dying: false,
+      isBoss: true, bossId: def.id, bossName: def.name,
+      shield: def.shield, maxShield: def.shield, shieldRegens: def.shieldRegens,
+      bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
+      bossAbilities: def.abilities,
+      bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
+    };
+    this.enemies.push(boss);
+    this.bossActive = boss;
+    this.arenaLeft = spawnX - 600;
+    this.arenaRight = spawnX + 600;
+    this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
+    audio.play("boss");
+    this.flashDescription(def.flavor);
+    this.screenShake = Math.max(this.screenShake, 12);
+    this.warning = `BOSS: ${def.name} — ${def.abilities.join(" • ")}`;
+    this.warnTimer = 5;
+  }
+
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
     const spawnX = this.camX + W + rand(40, 200);
