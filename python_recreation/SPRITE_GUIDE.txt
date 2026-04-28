@@ -1,0 +1,80 @@
+===============================================================
+ SPRITE GUIDE — which file goes where
+===============================================================
+Drop PNGs at these exact paths. Missing files = procedural fallback.
+All paths are relative to python_recreation/assets/sprites/
+
+PLAYER
+  player/player_idle.png        32x40  green tunic, yellow belt
+  player/player_run_1..4.png    32x40  4-frame run cycle
+  player/player_jump.png        32x40
+  player/player_roll.png        32x32  spinning ball
+
+ENEMIES (32x32 unless noted)
+  enemies/shooter.png           orange goblin w/ pistol
+  enemies/shooter_elite.png     brighter orange, better gear
+  enemies/shanker.png           purple w/ knife
+  enemies/shanker_swift.png     lighter purple, sleeker
+  enemies/brute.png       48x48 brown heavy
+  enemies/brute_heavy.png 64x64 dark brown, bigger
+  enemies/rider.png             blue w/ hoverboard
+  enemies/bomber.png            grey w/ grenades
+  enemies/sniper.png            red, long rifle
+
+BOSSES (64x64, or 96x96 for giants)
+  bosses/megger_knight.png      clash-royale-mega-knight-like, spiked fists
+  bosses/ahyah_omis.png         black cowboy hat + sniper + hood + goggles
+  bosses/terrorist.png          ICE-agent-style uniform
+  bosses/weakest_touhou.png     big brute, military, RED eyes
+  bosses/aegis.png        96x96 orange + black armor, shield
+  bosses/bum_ahh.png      96x96 king zombie slouched on throne
+  bosses/generic_vampire.png    cape, fangs
+  bosses/dude_inferior.png      inverted player colors, infinity on chest
+  bosses/dr_sighe.png           scientist w/ wires + infinity logo
+  bosses/evilest_oat.png  128x128  inverted player, bigger, infinity orb
+
+BOSS DROPS (items/, 16x16)
+  items/spiked_gauntlets.png    silver spiked fists
+  items/golden_awp.png          golden sniper rifle
+  items/big_red_button.png      red domed button
+  items/wand_beamer.png         wooden wand + sparkle
+  items/shield_of_aegis.png     round shield, orange rim
+  items/backup_bells.png        hand bell, gold
+  items/kusarigama.png          sickle on chain
+  items/star.png                5-point yellow star
+  items/potion_launcher.png     bubbling flask gun
+  items/exiled_ally.png   32x32 tall worn knight w/ greatsword
+
+SHOP ITEMS (items/, 16x16)
+  items/coin.png                yellow coin
+  items/token.png               cyan hexagon
+  items/crystal.png             purple gem
+  items/medkit.png              white box + red cross
+  items/ammo_pack.png           tan crate
+  items/powerup_dmg.png         red up-arrow
+  items/powerup_spd.png         blue lightning
+  items/powerup_inv.png         purple star
+  items/powerup_chr.png         green clock
+
+ALLIES (allies/, 32x32)
+  allies/gunner.png             blue, rifle
+  allies/medic.png              white + red cross
+  allies/tank.png               grey, heavy armor
+  allies/shade.png              black silhouette
+  allies/exiled.png       48x48 permanent ally, greatsword + gun
+
+STATUS ICONS (items/, 8x8)
+  items/status_overdrive.png    purple pulse
+  items/status_shield.png       cyan bubble
+  items/status_bleed.png        red drop
+  items/status_burn.png         orange flame
+  items/status_freeze.png       cyan snowflake
+  items/status_slow.png         purple clock
+  items/status_enfeeble.png     grey arrow-down
+
+LANDMARKS (drawn procedurally by default; override with)
+  landmarks/main_shop.png       blue temple
+  landmarks/augment_shop.png    indigo temple next to main
+  landmarks/ally_shop.png       green chapel
+  landmarks/shady.png           orange tent
+  landmarks/boss_arena.png      stone colosseum

@@ -14,9 +14,9 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
   const miscBId = inv.miscB ?? "smoke";
 
   return (
-    <div className="pointer-events-none absolute inset-0 pixel-text text-[10px] md:text-[11px]">
+    <div className="pointer-events-none absolute inset-0 pixel-text" style={{ fontSize: "clamp(8px, 1.2vw, 11px)" }}>
       {/* Top-left bars */}
-      <div className="absolute top-3 left-3 space-y-1.5 w-[280px]">
+      <div className="absolute top-2 left-2 space-y-1.5" style={{ width: "clamp(180px, 28vw, 280px)" }}>
         <SegBar label={`HP ${Math.ceil(stats.hp)}/${stats.maxHp}`} pct={hpPct} color="hsl(var(--hud-hp))" />
         <SegBar
           label={stats.shieldActive ? `SHIELD ${stats.shieldCd.toFixed(1)}s` : stats.shieldCd > 0 ? `CD ${stats.shieldCd.toFixed(1)}s` : "SHIELD READY (X)"}

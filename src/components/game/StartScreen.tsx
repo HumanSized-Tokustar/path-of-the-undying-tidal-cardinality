@@ -101,6 +101,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
           </>
         )}
       </div>
+      {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
     </div>
   );
 };
