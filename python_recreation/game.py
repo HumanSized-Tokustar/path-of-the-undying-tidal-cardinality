@@ -1062,7 +1062,7 @@ class Game:
             col = (255,90,90) if i < self.lives else (58,74,114)
             s.blit(self.font.render("HEART", True, col), (10 + i*40, 42))
         # Currencies
-        s.blit(self.font.render(f"AMMO {self.ammo}  MISC {self.misc_ammo}  DASH {self.dash_charges}/2", True, (255,216,74)), (10, 60))
+        s.blit(self.font.render(f"AMMO {self.ammo}  MISC {self.misc_ammo}  DASH {self.dash_charges}/2  ROLL {self.roll_charges}/2", True, (255,216,74)), (10, 60))
         s.blit(self.font.render(f"COINS {self.coins}  TOKENS {self.tokens}  CRYS {self.crystals}", True, COLOR["text"]), (10, 76))
         # Distance + pace
         m = int(self.world_x / PX_PER_METER)
