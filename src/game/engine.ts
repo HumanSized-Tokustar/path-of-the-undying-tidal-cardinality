@@ -342,11 +342,9 @@ export class Game {
     this.input.wheelDelta += e.deltaY;
   };
   private onKeyDown = (e: KeyboardEvent) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { actionFor, normalizeKey } = require("./keybinds") as typeof import("./keybinds");
-    const k = normalizeKey(e.key);
+    const k = kbNormalize(e.key);
     // Prevent default for keys we use as game bindings
-    const action = actionFor(k);
+    const action = kbActionFor(k);
     if (action || ["w","a","s","d"," ","tab"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
