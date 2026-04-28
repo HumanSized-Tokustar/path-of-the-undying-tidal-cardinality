@@ -147,6 +147,7 @@ export interface GameStats {
   shieldActive: boolean; shieldCd: number;
   overdriveBar: number; overdriveActive: boolean; overdriveTime: number;
   dashCharges: number; dashCdNext: number;
+  rollCharges: number; rollCdNext: number;
   kills: number; bossKills: number;
   timeAlive: number;
   rank: string; rankColor: string;
