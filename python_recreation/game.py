@@ -422,19 +422,19 @@ class Game:
         elif keys[pygame.K_d]: self.p_facing = 1; self.pvx = speed
         else: self.pvx = 0
 
-        # Dash / Roll (S+SHIFT)
-        if pygame.K_LSHIFT in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
-            if keys[pygame.K_s] and self.p_on_ground:
-                self.rolling = True
-                self.roll_time = 0.56          # 2× dash duration
-                self.p_inv = max(self.p_inv, 0.56)
-                self.dash_charges -= 1
-                if self.dash_recharge <= 0: self.dash_recharge = 2
-            else:
-                self.dash_time = 0.28
-                self.p_inv = max(self.p_inv, 0.28)
-                self.dash_charges -= 1
-                if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Dash (Q) — independent meter, 2 charges, 2s recharge
+        if pygame.K_q in pressed_set and self.dash_charges > 0 and self.dash_time <= 0 and not self.rolling:
+            self.dash_time = 0.28
+            self.p_inv = max(self.p_inv, 0.28)
+            self.dash_charges -= 1
+            if self.dash_recharge <= 0: self.dash_recharge = 2
+        # Roll (Z) — independent meter, 2 charges, 4s recharge (2× dash)
+        if pygame.K_z in pressed_set and self.roll_charges > 0 and not self.rolling and self.dash_time <= 0:
+            self.rolling = True
+            self.roll_time = 0.56
+            self.p_inv = max(self.p_inv, 0.56)
+            self.roll_charges -= 1
+            if self.roll_recharge <= 0: self.roll_recharge = 4
         if self.dash_time > 0:
             self.pvx = self.p_facing * speed * 3.4
             self.dash_time -= dt
@@ -456,9 +456,17 @@ class Game:
             if self.dash_recharge <= 0 and self.dash_charges < 2:
                 self.dash_charges += 1
                 if self.dash_charges < 2: self.dash_recharge = 2
+        if self.roll_recharge > 0:
+            self.roll_recharge -= dt
+            if self.roll_recharge <= 0 and self.roll_charges < 2:
+                self.roll_charges += 1
+                if self.roll_charges < 2: self.roll_recharge = 4
 
-        # Jump
+        # Jump — SPACE OR W (W only when not on a ladder)
+        on_ladder_for_jump = self.find_overlapping_ladder() is not None
         if pygame.K_SPACE in pressed_set and self.p_jumps < self.max_jumps:
+            self.pvy = -560; self.p_jumps += 1
+        elif pygame.K_w in pressed_set and not on_ladder_for_jump and self.p_jumps < self.max_jumps:
             self.pvy = -560; self.p_jumps += 1
 
         # Slow-fall (antigrav)
