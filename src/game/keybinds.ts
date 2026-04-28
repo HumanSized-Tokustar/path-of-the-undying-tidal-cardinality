@@ -7,7 +7,7 @@ export type GameAction =
   | "jump" | "dash" | "roll" | "parry"
   | "fire" | "melee" | "miscA" | "miscB" | "grab"
   | "shield" | "overdrive"
-  | "inventory" | "pause"
+  | "inventory" | "pause" | "shop"
   | "slot1" | "slot2" | "slot3" | "slot4" | "slot5" | "slot6";
 
 export const ALL_ACTIONS: GameAction[] = [
@@ -15,7 +15,7 @@ export const ALL_ACTIONS: GameAction[] = [
   "jump","dash","roll","parry",
   "fire","melee","miscA","miscB","grab",
   "shield","overdrive",
-  "inventory","pause",
+  "inventory","pause","shop",
   "slot1","slot2","slot3","slot4","slot5","slot6",
 ];
 
@@ -24,13 +24,13 @@ export const ACTION_LABEL: Record<GameAction, string> = {
   jump: "Jump (2nd bind)", dash: "Dash", roll: "Roll", parry: "Parry",
   fire: "Fire Ranged", melee: "Melee", miscA: "Misc A (hold to charge)", miscB: "Misc B (hold to charge)", grab: "Grab (hold to charge throw)",
   shield: "Shield", overdrive: "Overdrive",
-  inventory: "Inventory", pause: "Pause",
+  inventory: "Inventory", pause: "Pause", shop: "Open Shop (at landmark)",
   slot1: "Ranged Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5", slot6: "Slot 6",
 };
 
 export const DEFAULT_KEYBINDS: Record<GameAction, string> = {
   moveLeft: "a", moveRight: "d", moveUp: "w", moveDown: "s",
-  jump: " ",     // space (W also jumps in engine special-case)
+  jump: " ",
   dash: "q",
   roll: "z",
   parry: "e",
@@ -43,6 +43,7 @@ export const DEFAULT_KEYBINDS: Record<GameAction, string> = {
   overdrive: "g",
   inventory: "tab",
   pause: "escape",
+  shop: "t",
   slot1: "1", slot2: "2", slot3: "3", slot4: "4", slot5: "5", slot6: "6",
 };
 
