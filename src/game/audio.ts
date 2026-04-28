@@ -28,7 +28,7 @@ class AudioManager {
   private trackIndex = 0;
   private musicVol = 0.18;
   private sfxVol = 0.55;
-  private sfxPools: Record<SfxKey, HTMLAudioElement[]> = { fire: [], kill: [], death: [], purchase: [], boss: [], applepay: [], miscthrow: [], parry: [], slash: [] };
+  private sfxPools: Record<SfxKey, HTMLAudioElement[]> = { fire: [], kill: [], death: [], purchase: [], boss: [], applepay: [], miscthrow: [], parry: [], slash: [], bossDeath: [] };
   private muted = false;
   private started = false;
 
