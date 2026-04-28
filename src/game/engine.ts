@@ -456,6 +456,7 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
+    this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
@@ -1575,7 +1576,30 @@ export class Game {
         e.glintTimer = 0.4;
         this.kills++;
         this.comboCount++; this.comboTimer = 3;
-        audio.play("kill");
+        if (e.isBoss) {
+          audio.play("bossDeath");
+          this.bossKills++;
+          if (this.bossActive === e) { this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0; }
+          // Boss loot bundle: special drop + coins + medkit + powerup + crystals + tokens
+          this.coins += randi(50, 150);
+          this.crystals += randi(1, 3);
+          this.tokens += randi(1, 2);
+          this.pHp = Math.min(this.pMaxHp, this.pHp + 60);
+          if (e.bossDropWeapon && !this.inventory.owned.includes(e.bossDropWeapon)) {
+            this.inventory.owned.push(e.bossDropWeapon);
+            this.flashDescription(`BOSS DROP — ${WEAPONS[e.bossDropWeapon].name.toUpperCase()} ACQUIRED!`);
+          } else if (e.bossDropAlly) {
+            this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
+          }
+          // Boss explosion particles
+          for (let i = 0; i < 40; i++) this.particles.push({
+            x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
+            life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
+          });
+          this.screenShake = Math.max(this.screenShake, 20);
+        } else {
+          audio.play("kill");
+        }
         this.dropLoot(e);
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({
