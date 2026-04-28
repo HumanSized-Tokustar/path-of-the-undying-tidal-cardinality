@@ -574,22 +574,23 @@ export class Game {
     else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
     this.pvx += conveyorPush;
 
-    // Dash (with i-frames)
-    if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0) {
-      if (this.input.down && this.pOnGround) {
-        this.rolling = true;
-        this.rollTime = 0.56;          // 2× dash duration
-        this.pInv = Math.max(this.pInv, 0.56); // i-frames whole roll
-        this.dashCharges--;
-        if (this.dashRecharge <= 0) this.dashRecharge = 2;
-      }
-      else {
-        this.dashTime = 0.28; // longer dash
-        this.pInv = Math.max(this.pInv, 0.28); // i-frames whole dash
-        this.dashCharges--;
-        if (this.dashRecharge <= 0) this.dashRecharge = 2;
-      }
+    // Dash (Q) — with i-frames
+    if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
+      this.dashTime = 0.28;
+      this.pInv = Math.max(this.pInv, 0.28);
+      this.dashCharges--;
+      if (this.dashRecharge <= 0) this.dashRecharge = 2;
     }
+    // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
+    const rollPressed = (this as any).rollPressed as boolean;
+    if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
+      this.rolling = true;
+      this.rollTime = 0.56;
+      this.pInv = Math.max(this.pInv, 0.56);
+      this.rollCharges--;
+      if (this.rollRecharge <= 0) this.rollRecharge = 4; // 2× dash recharge
+    }
+    (this as any).rollPressed = false;
     if (this.dashTime > 0) {
       this.pvx = this.pFacing * speed * 3.4;
       this.dashTime -= dt;
@@ -619,6 +620,13 @@ export class Game {
       if (this.dashRecharge <= 0 && this.dashCharges < 2) {
         this.dashCharges++;
         if (this.dashCharges < 2) this.dashRecharge = 2;
+      }
+    }
+    if (this.rollRecharge > 0) {
+      this.rollRecharge -= dt;
+      if (this.rollRecharge <= 0 && this.rollCharges < 2) {
+        this.rollCharges++;
+        if (this.rollCharges < 2) this.rollRecharge = 4;
       }
     }
 
