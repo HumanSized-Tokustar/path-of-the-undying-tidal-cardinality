@@ -1472,16 +1472,33 @@ export class Game {
 
       const espd = this.diffEnemySpeed();
       if (!e.flying && !e.thrown) {
-        // Climb ladders if overlapping one and player is higher than the enemy
-        let onLadder = false;
+        // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
+        let onLadder: Platform | null = null;
         for (const p of this.platforms) {
           if (p.kind !== "ladder") continue;
           if (e.x + e.w/2 > p.x && e.x - e.w/2 < p.x + p.w &&
-              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = true; break; }
+              e.y + e.h > p.y - 4 && e.y < p.y + p.h + 30) { onLadder = p; break; }
         }
-        if (onLadder && this.py + this.ph < e.y + 4) {
-          e.vy = -150;
-          e.onGround = false;
+        const dyToPlayer = this.py - e.y;
+        if (onLadder) {
+          // Snap toward ladder center so they don't fall off
+          const center = onLadder.x + onLadder.w / 2;
+          e.x += Math.sign(center - e.x) * Math.min(80 * dt, Math.abs(center - e.x));
+          if (dyToPlayer < -40) { e.vy = -160; e.onGround = false; }     // climb up
+          else if (dyToPlayer > 60) { e.vy = 160; e.onGround = false; }  // climb down
+        } else if (Math.abs(dyToPlayer) > 50) {
+          // Seek nearest ladder within ~220px horizontally
+          let nearest: Platform | null = null; let nd = 220;
+          for (const p of this.platforms) {
+            if (p.kind !== "ladder") continue;
+            const d = Math.abs((p.x + p.w/2) - (e.x + e.w/2));
+            if (d < nd) { nd = d; nearest = p; }
+          }
+          if (nearest) {
+            const target = nearest.x + nearest.w/2;
+            const dir = Math.sign(target - (e.x + e.w/2));
+            e.vx = dir * 80 * espd;
+          }
         }
         e.vy += 1700 * dt * (this.difficulty === "dunce" ? 0.85 : 1);
         e.y += e.vy * dt;
