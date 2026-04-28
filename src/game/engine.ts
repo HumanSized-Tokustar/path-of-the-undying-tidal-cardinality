@@ -408,6 +408,8 @@ export class Game {
     this.lives = this.maxLives;
     this.slowFall = 0;
     this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
+    this.rollCharges = 2; this.rollRecharge = 0;
+    (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
     this.camX = 0; this.worldX = 0;
