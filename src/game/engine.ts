@@ -10,7 +10,8 @@ import { bossForMilestone, BOSS_SPAWN_INTERVAL_METERS } from "./bosses";
 // jump-through platforms, humanoid sprites, difficulty.
 // ============================================================
 
-export type Phase = "menu" | "playing" | "paused" | "inventory" | "dead";
+export type Phase = "menu" | "playing" | "paused" | "inventory" | "shop" | "dead";
+export type ShopKind = "main" | "ally" | "shady";
 export type Difficulty = "dunce" | "alright" | "son";
 
 const W = 960;
