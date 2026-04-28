@@ -1,6 +1,8 @@
 import { audio } from "./audio";
 import { WEAPONS, WeaponId, STARTING_OWNED, STARTING_RANGED, STARTING_MELEE, STARTING_MISC_A, STARTING_MISC_B } from "./weapons";
 import { PLATFORM_VARIANTS, PlatformKind, pickPlatformKind } from "./platforms";
+import { actionFor as kbActionFor, normalizeKey as kbNormalize } from "./keybinds";
+import { bossForMilestone, BOSS_SPAWN_INTERVAL_METERS } from "./bosses";
 
 // ============================================================
 // PATH OF THE UNDYING TIDAL CARDINALITY — Wave 4 Engine
@@ -113,6 +115,19 @@ interface Enemy {
   legPhase: number;
   glintTimer: number;     // death glint
   dying: boolean;
+  // Wave 8 — boss extension
+  isBoss?: boolean;
+  bossId?: string;
+  bossName?: string;
+  shield?: number;
+  maxShield?: number;
+  shieldRegens?: number;  // remaining regens left
+  bossColor?: string;
+  bossAccent?: string;
+  bossEye?: string;
+  bossAbilities?: string[];
+  bossDropWeapon?: WeaponId | null;
+  bossDropAlly?: string | null;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -253,9 +268,13 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"|"boss"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
+  // Wave 8 — boss milestone tracker
+  private nextBossMilestone = 1;    // 1 => 555m, 2 => 1110m, ...
+  private bossActive: Enemy | null = null;
+  private arenaLeft = 0; private arenaRight = 0;
 
   private last = 0; private rafId = 0;
 
@@ -341,54 +360,59 @@ export class Game {
     this.input.wheelDelta += e.deltaY;
   };
   private onKeyDown = (e: KeyboardEvent) => {
-    const k = e.key.toLowerCase();
-    if (["w","a","s","d"," ","f","r","q","e","c","v","x","g","tab","p","shift","1","2","3","4","5","6"].includes(k)) e.preventDefault();
+    const k = kbNormalize(e.key);
+    // Prevent default for keys we use as game bindings
+    const action = kbActionFor(k);
+    if (action || ["w","a","s","d"," ","tab"].includes(k)) e.preventDefault();
     if (this.keys.has(k)) return;
     this.keys.add(k);
-    switch (k) {
-      case "a": this.input.left = true; break;
-      case "d": this.input.right = true; break;
-      case "w": {
-        // W = climb up if on ladder, otherwise jump (mirrors SPACE)
+    if (!action) return;
+    switch (action) {
+      case "moveLeft": this.input.left = true; break;
+      case "moveRight": this.input.right = true; break;
+      case "moveUp": {
         this.input.up = true;
+        // moveUp doubles as climb; if not on ladder, also triggers jump (dual-purpose like W)
         const onLadder = !!this.findOverlappingLadder();
         if (!onLadder) { this.input.jump = true; this.input.jumpPressed = true; }
         break;
       }
-      case "s": this.input.down = true; break;
-      case " ": this.input.jump = true; this.input.jumpPressed = true; break;
-      case "q": this.input.dash = true; this.input.dashPressed = true; break;       // DASH
-      case "z": (this as any).rollPressed = true; break;                              // ROLL
-      case "f": this.input.fireR = true; this.input.fireRPressed = true; break;
-      case "o": this.input.miscA = true; this.input.miscAPressed = true; break;     // MISC A
-      case "p": this.input.miscB = true; this.input.miscBPressed = true; break;     // MISC B
-      case "r": this.input.melee = true; this.input.meleePressed = true; break;
-      case "x": this.input.shield = true; this.input.shieldPressed = true; break;
-      case "g": this.input.overdrivePressed = true; break;
-      case "e": this.input.parryPressed = true; break;                                // PARRY
-      case "v": this.input.grab = true; this.input.grabPressed = true; break;
-      case "tab": this.input.inventoryPressed = true; break;
-      case "escape": this.input.pausePressed = true; break;                           // PAUSE
-      case "1": case "2": case "3": case "4": case "5": case "6":
-        this.input.slotPressed[parseInt(k) - 1] = true; break;
+      case "moveDown": this.input.down = true; break;
+      case "jump": this.input.jump = true; this.input.jumpPressed = true; break;
+      case "dash": this.input.dash = true; this.input.dashPressed = true; break;
+      case "roll": (this as any).rollPressed = true; break;
+      case "fire": this.input.fireR = true; this.input.fireRPressed = true; break;
+      case "miscA": this.input.miscA = true; this.input.miscAPressed = true; break;
+      case "miscB": this.input.miscB = true; this.input.miscBPressed = true; break;
+      case "melee": this.input.melee = true; this.input.meleePressed = true; break;
+      case "shield": this.input.shield = true; this.input.shieldPressed = true; break;
+      case "overdrive": this.input.overdrivePressed = true; break;
+      case "parry": this.input.parryPressed = true; break;
+      case "grab": this.input.grab = true; this.input.grabPressed = true; break;
+      case "inventory": this.input.inventoryPressed = true; break;
+      case "pause": this.input.pausePressed = true; break;
+      case "slot1": case "slot2": case "slot3": case "slot4": case "slot5": case "slot6":
+        this.input.slotPressed[parseInt(action.slice(4)) - 1] = true; break;
     }
   };
   private onKeyUp = (e: KeyboardEvent) => {
-    const k = e.key.toLowerCase();
+    const k = kbNormalize(e.key);
     this.keys.delete(k);
-    switch (k) {
-      case "a": this.input.left = false; break;
-      case "d": this.input.right = false; break;
-      case "w": this.input.up = false; this.input.jump = false; break;
-      case "s": this.input.down = false; break;
-      case " ": this.input.jump = false; break;
-      case "q": this.input.dash = false; break;
-      case "f": this.input.fireR = false; break;
-      case "o": this.input.miscA = false; this.input.miscAReleased = true; break;
-      case "p": this.input.miscB = false; this.input.miscBReleased = true; break;
-      case "r": this.input.melee = false; break;
-      case "x": this.input.shield = false; break;
-      case "v": this.input.grab = false; this.input.grabReleased = true; break;
+    const action = kbActionFor(k);
+    if (!action) return;
+    switch (action) {
+      case "moveLeft": this.input.left = false; break;
+      case "moveRight": this.input.right = false; break;
+      case "moveUp": this.input.up = false; this.input.jump = false; break;
+      case "moveDown": this.input.down = false; break;
+      case "jump": this.input.jump = false; break;
+      case "dash": this.input.dash = false; break;
+      case "fire": this.input.fireR = false; break;
+      case "miscA": this.input.miscA = false; this.input.miscAReleased = true; break;
+      case "miscB": this.input.miscB = false; this.input.miscBReleased = true; break;
+      case "melee": this.input.melee = false; break;
+      case "shield": this.input.shield = false; break;
+      case "grab": this.input.grab = false; this.input.grabReleased = true; break;
     }
   };
 
@@ -432,6 +456,7 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
+    this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
@@ -552,8 +577,13 @@ export class Game {
     // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
     const meters = this.worldX / PX_PER_METER;
     const stepIncrements = Math.floor(meters / 300);
-    const baseMs = Math.min(105, 15 + stepIncrements * 10);
-    this.paceMult = baseMs / 15;
+    // Distance-based pace still scales difficulty/spawns internally but player walk speed is capped.
+    const paceMs = Math.min(105, 15 + stepIncrements * 10);
+    this.paceMult = paceMs / 15;
+
+    // PLAYER MAX SPEED HARD CAP: 40 m/s (user cap — prevents out-running loaded world).
+    const PLAYER_MAX_MS = 40;
+    const baseMs = Math.min(PLAYER_MAX_MS, paceMs);
 
     // Movement: convert m/s to px/s
     let speed = baseMs * (PX_PER_METER / 3);
@@ -563,6 +593,9 @@ export class Game {
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
+    // Final clamp so buffs can't blow past the cap in world-units.
+    const MAX_PX = PLAYER_MAX_MS * PX_PER_METER * 1.6; // allow roll/OD/powerup bonus up to 1.6×
+    speed = Math.min(speed, MAX_PX);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -968,6 +1001,18 @@ export class Game {
     }
 
     this.warnTimer -= dt;
+    // Boss milestone spawn (every 555m)
+    const metersNowBoss = this.worldX / PX_PER_METER;
+    const dueMilestone = Math.floor(metersNowBoss / BOSS_SPAWN_INTERVAL_METERS) + 1;
+    if (!this.bossActive && dueMilestone > this.nextBossMilestone - 1 && metersNowBoss >= (this.nextBossMilestone) * BOSS_SPAWN_INTERVAL_METERS - 5) {
+      this.spawnBoss(this.nextBossMilestone);
+      this.nextBossMilestone++;
+    }
+    // Arena wall clamp while boss is alive
+    if (this.bossActive && !this.bossActive.dying) {
+      if (this.px < this.arenaLeft) this.px = this.arenaLeft;
+      if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
+    }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
       const m = Math.floor(this.worldX / PX_PER_METER);
@@ -1274,6 +1319,40 @@ export class Game {
     void prevBottomDummy;
   }
 
+  private spawnBoss(milestone: number) {
+    const def = bossForMilestone(milestone);
+    const hpMul = this.diffEnemyHp();
+    const spawnX = this.camX + W * 0.6;
+    const spawnY = GROUND_Y - def.h;
+    const boss: Enemy = {
+      type: "brute" as EnemyType,
+      x: spawnX, y: spawnY, vx: 0, vy: 0,
+      w: def.w, h: def.h, hp: def.hp * hpMul, maxHp: def.hp * hpMul,
+      onGround: true, facing: -1,
+      fireCd: 1.5, aiTimer: 0, targetDx: 0, hurtFlash: 0,
+      burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
+      flying: false, baseY: spawnY,
+      jumpCd: 0, disabled: 0, grabbed: false,
+      thrown: false, throwVx: 0, throwVy: 0,
+      legPhase: 0, glintTimer: 0, dying: false,
+      isBoss: true, bossId: def.id, bossName: def.name,
+      shield: def.shield, maxShield: def.shield, shieldRegens: def.shieldRegens,
+      bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
+      bossAbilities: def.abilities,
+      bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
+    };
+    this.enemies.push(boss);
+    this.bossActive = boss;
+    this.arenaLeft = spawnX - 600;
+    this.arenaRight = spawnX + 600;
+    this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
+    audio.play("boss");
+    this.flashDescription(def.flavor);
+    this.screenShake = Math.max(this.screenShake, 12);
+    this.warning = `BOSS: ${def.name} — ${def.abilities.join(" • ")}`;
+    this.warnTimer = 5;
+  }
+
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
     const spawnX = this.camX + W + rand(40, 200);
@@ -1543,7 +1622,30 @@ export class Game {
         e.glintTimer = 0.4;
         this.kills++;
         this.comboCount++; this.comboTimer = 3;
-        audio.play("kill");
+        if (e.isBoss) {
+          audio.play("bossDeath");
+          this.bossKills++;
+          if (this.bossActive === e) { this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0; }
+          // Boss loot bundle: special drop + coins + medkit + powerup + crystals + tokens
+          this.coins += randi(50, 150);
+          this.crystals += randi(1, 3);
+          this.tokens += randi(1, 2);
+          this.pHp = Math.min(this.pMaxHp, this.pHp + 60);
+          if (e.bossDropWeapon && !this.inventory.owned.includes(e.bossDropWeapon)) {
+            this.inventory.owned.push(e.bossDropWeapon);
+            this.flashDescription(`BOSS DROP — ${WEAPONS[e.bossDropWeapon].name.toUpperCase()} ACQUIRED!`);
+          } else if (e.bossDropAlly) {
+            this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
+          }
+          // Boss explosion particles
+          for (let i = 0; i < 40; i++) this.particles.push({
+            x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
+            life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
+          });
+          this.screenShake = Math.max(this.screenShake, 20);
+        } else {
+          audio.play("kill");
+        }
         this.dropLoot(e);
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({

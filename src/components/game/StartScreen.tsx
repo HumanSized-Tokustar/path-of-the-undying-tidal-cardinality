@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { audio } from "@/game/audio";
+import { SettingsOverlay } from "@/components/game/SettingsOverlay";
 
 type Difficulty = "dunce" | "alright" | "son";
 
@@ -9,6 +10,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
   const [sfxVol, setSfxVol] = useState(audio.getSfxVolume());
   const [diff, setDiff] = useState<Difficulty>("alright");
   const setD = (d: Difficulty) => { setDiff(d); onDifficulty?.(d); };
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <div className="absolute inset-0 grid place-items-center bg-background/85 pixel-text">
@@ -54,7 +56,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
             </div>
             <div className="space-y-2.5">
               <Btn onClick={onStart} primary>▶ START GAME</Btn>
-              <Btn onClick={() => setView("settings")}>⚙ SETTINGS</Btn>
+              <Btn onClick={() => setShowSettings(true)}>⚙ SETTINGS / KEYBINDS</Btn>
               <Btn onClick={() => setView("credits")}>★ CREDITS</Btn>
             </div>
             <div className="mt-4">
@@ -99,6 +101,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
           </>
         )}
       </div>
+      {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
     </div>
   );
 };

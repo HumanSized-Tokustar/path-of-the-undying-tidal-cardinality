@@ -3,7 +3,11 @@
 export type WeaponId =
   | "pistol" | "smg" | "shotgun" | "rifle" | "knife" | "grenade"
   | "awp" | "portalgun" | "rocket" | "minigun"
-  | "smoke" | "medkit" | "molotov" | "katana";
+  | "smoke" | "medkit" | "molotov" | "katana"
+  // Wave 8 — Boss drops
+  | "spiked_gauntlets" | "golden_awp" | "big_red_button" | "wand_beamer"
+  | "shield_of_aegis" | "backup_bells" | "kusarigama" | "star_cosmetic"
+  | "potion_launcher";
 
 export interface WeaponDef {
   id: WeaponId;
@@ -37,6 +41,16 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   portalgun:{ id:"portalgun",name:"Portal Gun",kind:"ranged",class:"ranged", dmg:0,   fireCd:0.80, spread:0,    pellets:1, speed:600, ammoPerShot:1, pierce:0, color:"#d97bff", desc:"Boss drop (utility)." },
   rocket:   { id:"rocket",   name:"Rocket",   kind:"ranged", class:"ranged", dmg:160, fireCd:1.10, spread:0,    pellets:1, speed:520, ammoPerShot:1, pierce:99,color:"#ff5a5a", desc:"AoE rocket. Boss drop." },
   minigun:  { id:"minigun",  name:"Minigun",  kind:"ranged", class:"ranged", dmg:14,  fireCd:0.04, spread:0.14, pellets:1, speed:820, ammoPerShot:1, pierce:0, color:"#ffd84a", desc:"Spool-up shredder." },
+  // Wave 8 — Boss drops
+  spiked_gauntlets: { id:"spiked_gauntlets", name:"Spiked Gauntlets", kind:"melee", class:"melee", dmg:60, fireCd:0.30, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#b8c0d0", desc:"Megger Knight fists. Grants long-jump when equipped." },
+  golden_awp: { id:"golden_awp", name:"Golden AWP", kind:"ranged", class:"ranged", dmg:480, fireCd:0.70, spread:0, pellets:1, speed:1600, ammoPerShot:1, pierce:4, color:"#ffd84a", desc:"Ahyah Omis' sniper. 2× AWP damage, faster fire." },
+  big_red_button: { id:"big_red_button", name:"Big Red Button", kind:"thrown", class:"misc", deploy:true, dmg:6767, fireCd:420, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:99, color:"#ff3a3a", desc:"NUKE. 7-minute cooldown. One-shots almost anything." },
+  wand_beamer: { id:"wand_beamer", name:"Wand Beamer", kind:"ranged", class:"ranged", dmg:20, fireCd:0.06, spread:0.04, pellets:1, speed:900, ammoPerShot:1, pierce:1, color:"#d97bff", desc:"Weakest Touhou wand. Very fast energy balls." },
+  shield_of_aegis: { id:"shield_of_aegis", name:"Shield of Aegis", kind:"melee", class:"melee", dmg:35, fireCd:0.40, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#ffd84a", desc:"Hold melee = 80% damage reduction. Triple-tap = ram." },
+  backup_bells: { id:"backup_bells", name:"Backup Bells", kind:"thrown", class:"misc", deploy:true, dmg:0, fireCd:30, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#ffd84a", desc:"Summons 2 minions + 1 brute + 1 giant ally for 19s." },
+  kusarigama: { id:"kusarigama", name:"Kusarigama", kind:"melee", class:"melee", dmg:45, fireCd:0.38, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#8a0a1a", desc:"Hook sickle. Lifesteals 25 HP per hit." },
+  star_cosmetic: { id:"star_cosmetic", name:"Star", kind:"thrown", class:"misc", deploy:true, dmg:0, fireCd:1, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#ffd84a", desc:"Sparkle trail. Purely cosmetic." },
+  potion_launcher: { id:"potion_launcher", name:"Potion Launcher", kind:"ranged", class:"ranged", dmg:30, fireCd:0.55, spread:0.08, pellets:1, speed:520, ammoPerShot:1, pierce:99, color:"#7be0ff", desc:"Dr. Sighe's potion. Random status on enemies, heals allies." },
 };
 
 export const STARTING_LOADOUT: WeaponId[] = ["pistol", "smg", "shotgun"];
