@@ -11,14 +11,16 @@ import sfxApplePay from "@/assets/audio/sfx_apple_pay.mp3";
 import sfxMiscThrow from "@/assets/audio/sfx_misc_throw.mp3";
 import sfxParry from "@/assets/audio/sfx_parry.mp3";
 import sfxSlash from "@/assets/audio/sfx_slash.mp3";
+import sfxBossDeath from "@/assets/audio/sfx_boss_death.mp3";
 
 export const MUSIC_TRACKS = [musicJetpack, musicGarfield, musicMinecraft, musicLego];
 export const MUSIC_NAMES = ["Jetpack Joyride", "Garfield", "Minecraft", "Lego Saloon"];
 
-type SfxKey = "fire" | "kill" | "death" | "purchase" | "boss" | "applepay" | "miscthrow" | "parry" | "slash";
+type SfxKey = "fire" | "kill" | "death" | "purchase" | "boss" | "applepay" | "miscthrow" | "parry" | "slash" | "bossDeath";
 const SFX_SRC: Record<SfxKey, string> = {
   fire: sfxFire, kill: sfxKill, death: sfxDeath, purchase: sfxPurchase, boss: sfxBoss,
   applepay: sfxApplePay, miscthrow: sfxMiscThrow, parry: sfxParry, slash: sfxSlash,
+  bossDeath: sfxBossDeath,
 };
 
 class AudioManager {
