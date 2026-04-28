@@ -32,6 +32,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
           <span>AMMO {stats.ammo}</span>
           <span>● MISC {miscCount}</span>
           <span>● DASH {stats.dashCharges}/2</span>
+          <span className="text-[#7be0ff]">● ROLL {(stats as any).rollCharges ?? 2}/2</span>
         </div>
         <div className="flex gap-1 mt-1">
           <span className="text-[9px] text-[#fff7d6] mr-1">LIVES</span>
