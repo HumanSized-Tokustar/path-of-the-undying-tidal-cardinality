@@ -558,8 +558,13 @@ export class Game {
     // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
     const meters = this.worldX / PX_PER_METER;
     const stepIncrements = Math.floor(meters / 300);
-    const baseMs = Math.min(105, 15 + stepIncrements * 10);
-    this.paceMult = baseMs / 15;
+    // Distance-based pace still scales difficulty/spawns internally but player walk speed is capped.
+    const paceMs = Math.min(105, 15 + stepIncrements * 10);
+    this.paceMult = paceMs / 15;
+
+    // PLAYER MAX SPEED HARD CAP: 40 m/s (user cap — prevents out-running loaded world).
+    const PLAYER_MAX_MS = 40;
+    const baseMs = Math.min(PLAYER_MAX_MS, paceMs);
 
     // Movement: convert m/s to px/s
     let speed = baseMs * (PX_PER_METER / 3);
@@ -569,6 +574,9 @@ export class Game {
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
+    // Final clamp so buffs can't blow past the cap in world-units.
+    const MAX_PX = PLAYER_MAX_MS * PX_PER_METER * 1.6; // allow roll/OD/powerup bonus up to 1.6×
+    speed = Math.min(speed, MAX_PX);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
