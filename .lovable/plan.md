@@ -1,130 +1,97 @@
-# Wave 8 — Rebindable controls, responsive UI, 10-boss system, polished shops, full Python sync
+## Wave 9 — Landmarks, Shops, Status Effects, Bosses, Python Refresh
 
-## 1. Rebindable keybinds (Settings menu)
+### 1. Landmark / Safe-Zone System (`src/game/engine.ts`)
 
-- New `SettingsOverlay.tsx` accessed via a `SETTINGS` button on `StartScreen` and on the `PauseOverlay`.
-- Tabs: **Audio** (existing sliders) and **Controls** (new).
-- Controls tab lists every action (Move U/D/L/R, Jump, Dash, Roll, Parry, Fire, Melee, MiscA, MiscB, Grab, Shield, Overdrive, Inventory, Pause, Slots 1-6). Clicking a row → "Press any key…" → captures next keydown, validates no duplicate, saves.
-- Bindings persisted in `localStorage` (`potc.keybinds.v1`) and loaded into `Game.keybinds` at boot. Defaults = Wave 6 layout (Q dash, Z roll, E parry, W/SPACE jump, ESC pause, O/P misc, etc.).
-- `Game.onKeyDown/onKeyUp` refactored: instead of a `switch(e.code)`, it looks up `this.keybinds.actionFor(e.code)` and dispatches.
-- A **RESET DEFAULTS** button restores the Wave 6 map.
+Replace the current "every 1000m" landmark generator with **fixed milestone scheduling** tied to distance traveled:
 
-## 2. Responsive UI (fix the clipped HUD in the screenshot)
+- Main Shop + Augment (Upgrade) Shop: every **1234 m** — augment spawns ~280px to the right of the main shop.
+- Ally Shop: every **1667 m** (independent cycle).
+- Boss Arena: every **5555 m** (independent cycle, see §3).
+- Shady Figure: every **3333 m** (cheap rare-augment cart).
 
-- `src/pages/Index.tsx` wrapper: replace fixed canvas size with a `ResizeObserver`-driven sizer that keeps a 16:9 aspect and scales HUD text with `clamp()`.
-- `Hud.tsx` + all overlays: wrap in a container using `container queries` (`@container`) + `clamp(8px, 1.2vw, 14px)` font sizing. The tall controls list in `PauseOverlay` becomes scrollable (`overflow-y-auto max-h-[70vh]`) so the RESUME/MENU buttons are always visible.
-- All overlays use `inset-0 flex items-center justify-center p-4` with `max-w-[min(90vw,640px)]`.
-- Hotbar, lives, ammo reflow to a 2-column grid under ~900px width.
+Implementation:
+- Track `nextMainAt`, `nextAllyAt`, `nextShadyAt`, `nextBossAt` (in meters). When `worldX/PX_PER_METER >= nextX`, push the landmark and advance.
+- `inSafeZone` already exists; expand it to also **disable enemy AI / spawning** within **9 m (= 288 px)** of any shop landmark center. In `updateEnemies`, if `Math.abs(e.x - safeCenter) < 288`, skip movement + skip firing. In `spawnEnemy`, reject `spawnX` inside any safe zone.
+- Currency rebalance: drop `coin` rates -25%, drop `token`/`crystal` rates -50% to make them harder to find (per prior user request, reaffirmed).
 
-## 3. Boss system overhaul (10 unique bosses + arenas)
+### 2. Shop UI Overhaul (`src/components/game/ShopOverlay.tsx`)
 
-Bosses spawn at fixed landmark distances: **first at 555m, then every 555m** (555, 1110, 1665, 2220, …). The 10 bosses from `BOSS_CONCEPTS.pdf` rotate in order, then loop with scaled stats.
+Rebuild to match the user's mockups:
 
-### Arena lock
-When player enters a boss landmark:
-- An invisible L/R wall spawns at arena edges (±600px from boss anchor).
-- Normal enemy/tide spawning is paused inside the arena.
-- Camera auto-scroll pauses — the runner becomes a bounded arena fight.
-- On boss death: walls drop, tide resumes, camera resumes, boss explodes into loot.
+- **Main Shop**: yellow/blue palette, header "COINS LEFT: N" + EXIT button, 2×3 grid of class-tagged cards (MISC / GENERAL / RANGED / MELEE), big sprite preview area, "TAP TO READ ITEM DESCRIPTION" hint, paginated PAGE 1/N at bottom.
+- **Augment Shop**: purple palette, lightning bolt accent, RANGED / MELEE / MISC rows of empty boxes for 5 owned weapons, right-side STATUS EFFECTS panel (FIRE / FREEZE / STUN / ENFEEBLE / BLEED / ULTRA CRIT) each with an ADD button + crystal cost, "MAX 3 UPGRADES PER ITEM" footer.
+- **Ally Shop**: green palette, "TOKEN LEFT: N" header, horizontal scroll of ally cards w/ sprite, lifespan, cost, READ DESCRIPTION button, max-allies counter (20 normal / 50 if all bosses beaten).
 
-### Bosses (from concept PDF)
+Interaction:
+- **ENTER** key (or click) on a selected card buys it. Engine exposes `interactPressed` input wired to the new `interact` keybind (default ENTER).
+- On successful purchase, play `audio.play("applepay")` (already loaded as `sfx_apple_pay.mp3`).
+- Selected card shown via local `useState` selectedId; arrow-key navigation moves selection.
 
-| # | Name | HP / Shield | Speed | Key moves | Special drop |
-|---|---|---|---|---|---|
-| 1 | Megger Knight | 2500 | 7 | Slam-stun, 1.5s charge leap | **Spiked Gauntlets** (melee + long-jump) |
-| 2 | Ahyah Omis | 1500 | 17 | Sniper, Pocket Sand (2s blur), Roll | **Golden AWP** |
-| 3 | Terrorist | 3000 | 20 | Grenade cluster, Rocket, Rex-Splode on death (200 dmg) | **Big Red Button** (nuke, 7min CD) |
-| 4 | Weakest Touhou Enemy | 4000 / 555 shield | 20/26 | Machine gun 30-burst, Blast Spam, Final Flash beam <10% | **Wand Beamer** |
-| 5 | Aegis | 2500 / 3000 shield | 15/30 | Directional 95% shield, Shield Ram | **Shield of Aegis** (hold-melee block, triple-tap ram) |
-| 6 | Bum Ahh Commander | 8888 / 5000 shield | 0 | Summons Minion1/BigBrute/ChainedGiant; Desperate <20% | **Backup Bells** (summon 2 minions+brute+giant allies, 19s) |
-| 7 | Generic Vampire | 10000 | 40 | Claw bleed, Piercing Blood, Goy Dash lifesteal 500 | **Kusarigama** (hook + lifesteal 25) |
-| 8 | Dude Person's Inferior Imitation | 9999 / 999.9 shield | 67 | Enfeeble punch, Surprise (truck/rock, -40% maxHP), Pistol <10% | **Star** (cosmetic sparkle trail) |
-| 9 | Dr. Sighe Yan. Tiiestte | 4200 / 4200×3 regen shield | 15 (+15/break) | Potion (status), Zap, Iron Jotunn minion <20% | **Potion Launcher** |
-| 10 | The Evilest Strongest Boss O.A.T. | 25000 / 1000×5 regen | 20 (+11/break) | Combines all prior boss attacks; red sky | **The Exiled** (permanent ally, 6767 HP, greatsword + solar/lunar beam) |
+### 3. Boss Arena (separate stadium)
 
-### Shared boss behavior
-- Unique death sound: loaded from new `src/assets/audio/sfx_boss_death.mp3` (from uploaded `Roblox_tower_battles_void_s_death_sound.mp3`). Replaces regular `sfx_death` for bosses only.
-- On death drops (always): 1 special weapon/ally + random bundle of **coins (50-150), medkit, random powerup, 1-3 crystals, 1-2 tokens**.
-- Health bar banner at top of screen while boss is alive, with boss name + shield segment if applicable.
-- Unique pixel sprite per boss drawn procedurally on the canvas (no external PNGs needed — styled by color palette + silhouette per concept descriptions).
+When player hits a 5555m milestone:
+- `enterBossArena()`: snapshot `worldX`/`px`, then **teleport** to a synthetic gray-stadium stage (different background palette, no day/night, no weather, no other enemies, no other landmarks). Implemented by setting `arenaMode = true` and short-circuiting weather/landmark/enemy spawn code while it's true; render a stone-tile floor + colosseum back wall.
+- Spawn the next boss from `bosses.ts` (already have all 10).
+- Player physically clamped between `arenaLeft`/`arenaRight` (already implemented; just widen to full screen).
+- On boss death: drop the boss-specific weapon/ally + bundle (coins / heal / powerup / crystals / tokens — already present), play `bossDeath` SFX, then `exitBossArena()` restores `worldX`/`px` and resumes normal run.
 
-### Unique weapon/ally behaviors added to `weapons.ts` / engine
-- `spiked_gauntlets`: melee class, +long-jump when equipped in melee slot.
-- `golden_awp`: ranged, 2× AWP damage + faster.
-- `big_red_button`: misc deploy, screen-wide nuke, 420s cooldown.
-- `wand_beamer`: ranged, fast AOE beams.
-- `shield_of_aegis`: melee, hold R = 80% damage reduction, triple-tap R = ram.
-- `backup_bells`: misc, summons friendly mob pack for 19s.
-- `kusarigama`: melee, hook pull + 25 lifesteal.
-- `star`: misc, cosmetic sparkle trail (no damage).
-- `potion_launcher`: ranged, random status effects.
-- Ally `the_exiled`: permanent ally entity (tracked in `Game.allies[]`), attacks with greatsword + solar/lunar beams.
+### 4. Status Effects (`src/game/weapons.ts` + `engine.ts`)
 
-## 4. Shop polish (Main, Augment, Ally, Shady)
+Add `StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit"` and a per-enemy `statuses: { kind, until, data }[]`.
 
-- **Main Shop** (`ShopOverlay.tsx`):
-  - Click item or press **ENTER** to buy selected; arrow keys navigate grid.
-  - Pagination: 8 items per page, `← PREV PAGE / NEXT PAGE →` footer (A/D keys).
-- **Ally Shop** (`AllyOverlay.tsx`):
-  - Horizontal scroll roster (mouse wheel + left/right arrows) — "MORE →" hint when overflow.
-  - Right pane shows **description + stats** of currently focused ally (HP, damage, behavior text).
-- **Augment Shop** (`AugmentOverlay.tsx`): same pagination pattern, Crystal currency.
-- **Shady Guy** (`ShadyOverlay.tsx`): gamble / curse pacts, Token currency.
-- Every shop item gets a **distinct 16×16 procedural pixel icon** drawn via small canvas sprite functions (no external assets).
-- Currency rarity unchanged from Wave 7 (Crystals ~1%, Tokens ~3%).
+Augment shop entries (crystal costs per spec):
+- **Fire** — 20 crystals — `tickDamage 10/s` for 5s.
+- **Crystal Lightning** — 60 crystals — bullet chains to up to **5** nearest enemies within 140px.
+- **Enfeeble** — 76 crystals — enemy outgoing damage ×0.20 for 5s.
+- **Freeze** — 100 crystals — enemy `vx=vy=0` and AI skipped for 3s.
+- **Slow** — 70 crystals — enemy speed ×0.50 for 5s.
+- **UltraCrit** — 90 crystals — 1% chance any hit deals ×4 damage.
 
-## 5. Audio
+Stored per-weapon under `inventory.augments` keyed by weapon id (max 3 per item, enforced in shop). Apply on damage application in `damageEnemy()`. Render small status icons above enemy HP bar.
 
-- Add `sfx_boss_death.mp3` to `src/assets/audio/` (copied from the uploaded Tower Battles sound).
-- `audio.ts`: new SFX key `bossDeath`; engine plays it on any boss death instead of regular `death`.
+### 5. Bug Fixes & Pacing
 
-## 6. Python recreation parity (PRIORITY)
+- **Pause-menu controls list** (`PauseOverlay.tsx`): replace the hard-coded WASD/F/R text with a generated list that reads `getKeybinds()` and shows live bindings (same source as Settings).
+- **Settings persistence**: already saves to `localStorage`; verified `engine.ts` calls `kbActionFor` per keypress so changes apply instantly. Add an `onChange` event so the pause overlay re-renders when keybinds change.
+- **Enemy spawn pacing**: scale `spawnTimer` interval by `1 / (1 + playerAvgSpeed/40)` so enemy density doesn't lag behind a fast player. Also clamp landmark generation lookahead to `camX + W + 1200` (currently 800) to prevent pop-in at high speed.
+- **Map Info menu** (`StartScreen.tsx`): new "MAP INFO" button opens a panel listing: Main Shop @ 1234m (×N), Ally Shop @ 1667m, Shady @ 3333m, Boss Arena @ 5555m, plus icon legend.
 
-Update `python_recreation/`:
-- `game.py` — mirror all Wave 7 + Wave 8 systems: rebindable keys via a `KEYBINDS` dict loaded from `keybinds.json`, responsive window (`pygame.RESIZABLE`), 10 bosses with arena walls, unique drops, boss death sound, polished shop menus (pages + scroll).
-- `keybinds.json` — default map, user-editable.
-- `IMPLEMENTATION_GUIDE.txt` — step-by-step: folder layout, where to drop sprites (`assets/sprites/bosses/megger_knight.png`, etc.), how to wire sounds (`assets/sfx/boss_death.wav`), how to swap procedural sprites for hand-drawn ones, and how to extend the keybind system.
-- `SPRITE_GUIDE.txt` — per-boss/per-item description + expected filename so the user or an artist can drop PNGs in.
-- `SOUND_GUIDE.txt` — list of every SFX filename the game looks for and what triggers it.
-- `README.md` — refreshed controls + new features summary.
+### 6. Sprite Sourcing (no licensed assets used)
 
-All four text guides will be written in plain readable English, no code jargon where avoidable, so the user can follow them without dev experience.
+All sprites are drawn procedurally on canvas (boxes, circles, gradients) — no external sources. Where the boss images you provided show a specific look (Megger Knight spiked fists, Aegis shield, Bum Ahh throne, etc.), the engine renders a simplified pixel approximation using the `bossColor`/`bossAccent`/`bossEye` already in `bosses.ts`. If you want authentic sprite art, you can later drop PNGs into `src/assets/sprites/bosses/` and we'll wire `<image>` draws — the SPRITE_GUIDE.txt already documents the expected filenames.
 
-## Technical details (for reference)
+### 7. Python Recreation Refresh (`python_recreation/`)
 
-- Files created:
-  - `src/components/game/SettingsOverlay.tsx`
-  - `src/components/game/ShopOverlay.tsx`
-  - `src/components/game/AllyOverlay.tsx`
-  - `src/components/game/AugmentOverlay.tsx`
-  - `src/components/game/ShadyOverlay.tsx`
-  - `src/components/game/BossHealthBar.tsx`
-  - `src/game/keybinds.ts` (load/save + default map)
-  - `src/game/bosses.ts` (10 boss definitions + AI state machines)
-  - `src/game/sprites.ts` (procedural pixel drawers for bosses/items/allies)
-  - `src/assets/audio/sfx_boss_death.mp3` (copied from upload)
-  - `python_recreation/keybinds.json`
-  - `python_recreation/IMPLEMENTATION_GUIDE.txt`
-  - `python_recreation/SPRITE_GUIDE.txt`
-  - `python_recreation/SOUND_GUIDE.txt`
-- Files modified:
-  - `src/game/engine.ts` (keybind lookup, arena lock, boss spawn at 555m intervals, loot table, ally list, responsive virtual resolution)
-  - `src/game/weapons.ts` (+10 unique boss drops)
-  - `src/game/audio.ts` (+bossDeath key)
-  - `src/components/game/Hud.tsx` (responsive clamp sizing, boss bar, status icons above player stays in engine)
-  - `src/components/game/PauseOverlay.tsx` (scrollable + SETTINGS button)
-  - `src/components/game/StartScreen.tsx` (SETTINGS button)
-  - `src/pages/Index.tsx` (ResizeObserver sizing)
-  - `python_recreation/game.py`, `README.md`
+- Rewrite **`game.py`** to mirror the new TS systems:
+  - Fixed milestone landmark generator (1234/1667/3333/5555).
+  - Safe-zone enemy AI gate (9-meter radius).
+  - Status-effect framework (`Status` dataclass, applied on hit).
+  - Boss arena teleport (separate `Scene` enum value with its own draw + update).
+  - Shop UIs matching the mockups (pygame surfaces, ENTER to buy, plays `applepay.wav`).
+  - Player max speed 40 m/s clamp.
+  - Reads `keybinds.json` at startup, falls back to defaults.
+- Update **`keybinds.json`** to add `"interact": "return"`.
+- Rewrite **`IMPLEMENTATION_GUIDE.txt`** as a single ordered walkthrough: file layout, install pygame, asset folder structure, how to add the audio assets (where they came from — user uploads), how to drop in optional sprite PNGs, how to extend each system.
+- Update **`SPRITE_GUIDE.txt`** + **`SOUND_GUIDE.txt`** with the new shop palettes + apple-pay/ENTER sound cue.
 
-- No DB / Cloud changes.
-- No new external image assets — all boss/item sprites drawn procedurally from concept descriptions.
+### 8. Files Touched
 
-## Out of scope
-- Hand-drawn PNG boss art (guide included so user can add later).
-- Mobile touch controls (keybind system is keyboard only; mobile remains a stretch goal).
-- Packaged `python_build_v3.zip` — will be regenerated at end of implementation and delivered as an artifact.
+```text
+src/game/engine.ts              landmarks, safe-zone AI gate, status effects,
+                                arena teleport, pacing, interact keybind
+src/game/keybinds.ts            + "interact" action (default Enter)
+src/game/shops.ts               crystal-cost status augments, max 3/item rule
+src/game/weapons.ts             status hooks on damage application
+src/components/game/ShopOverlay.tsx     full re-skin (3 palettes, ENTER, Apple Pay)
+src/components/game/PauseOverlay.tsx    live-keybind controls list
+src/components/game/StartScreen.tsx     + MAP INFO button & panel
+python_recreation/game.py               full rewrite mirroring above
+python_recreation/keybinds.json         + interact
+python_recreation/IMPLEMENTATION_GUIDE.txt   refreshed step-by-step
+python_recreation/SPRITE_GUIDE.txt      shop palettes
+python_recreation/SOUND_GUIDE.txt       apple-pay cue
+```
 
----
+### Confirm
 
-Approve to proceed, or tell me what to trim/expand.
+Approve this and I'll switch to build mode and implement all 8 sections in one pass, ending with the updated Python files attached as artifacts you can download.

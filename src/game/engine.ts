@@ -75,6 +75,7 @@ interface Input {
   grabReleased: boolean;
   inventoryPressed: boolean;       // Y
   pausePressed: boolean;           // P
+  interactPressed: boolean;        // ENTER (shop interact / buy selected)
   slotPressed: boolean[]; // 1..6
   wheelDelta: number;
 }
@@ -129,7 +130,20 @@ interface Enemy {
   bossAbilities?: string[];
   bossDropWeapon?: WeaponId | null;
   bossDropAlly?: string | null;
+  // Wave 9 — status effects applied by augmented weapons
+  statuses?: { kind: StatusKind; until: number; data?: any }[];
 }
+
+export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
+
+export const STATUS_AUGMENTS: { id: StatusKind; name: string; cost: number; desc: string }[] = [
+  { id: "fire",      name: "FIRE",      cost: 20,  desc: "10 dmg/s for 5s." },
+  { id: "lightning", name: "LIGHTNING", cost: 60,  desc: "Chain to 5 enemies." },
+  { id: "enfeeble",  name: "ENFEEBLE",  cost: 76,  desc: "Enemy attack -80% / 5s." },
+  { id: "freeze",    name: "FREEZE",    cost: 100, desc: "Stop enemy 3s." },
+  { id: "slow",      name: "SLOW",      cost: 70,  desc: "Enemy speed -50% / 5s." },
+  { id: "ultracrit", name: "ULTRACRIT", cost: 90,  desc: "1% chance ×4 dmg." },
+];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -273,9 +287,18 @@ export class Game {
   private inSafeZone = false;
   private odPrevMaxHp = 123;
   // Wave 8 — boss milestone tracker
-  private nextBossMilestone = 1;    // 1 => 555m, 2 => 1110m, ...
+  private nextBossMilestone = 1;    // 1 => 5555m, 2 => 11110m, ...
   private bossActive: Enemy | null = null;
   private arenaLeft = 0; private arenaRight = 0;
+  // Wave 9 — fixed-interval landmark milestones (in meters)
+  private nextMainAt = 1234;
+  private nextAllyAt = 1667;
+  private nextShadyAt = 3333;
+  // Wave 9 — Boss arena teleport
+  private arenaMode = false;
+  private arenaSavedWorldX = 0; private arenaSavedPx = 0; private arenaSavedCamX = 0;
+  // Track defeated bosses for ally cap
+  private defeatedBossIds = new Set<string>();
 
   private last = 0; private rafId = 0;
 
@@ -306,6 +329,7 @@ export class Game {
       parryPressed: false, grabPressed: false,
       grab: false, grabReleased: false,
       inventoryPressed: false, pausePressed: false,
+      interactPressed: false,
       slotPressed: [false,false,false,false,false,false],
       wheelDelta: 0,
     };
@@ -392,6 +416,8 @@ export class Game {
       case "grab": this.input.grab = true; this.input.grabPressed = true; break;
       case "inventory": this.input.inventoryPressed = true; break;
       case "pause": this.input.pausePressed = true; break;
+      case "shop": this.toggleShop(); break;
+      case "interact": this.input.interactPressed = true; break;
       case "slot1": case "slot2": case "slot3": case "slot4": case "slot5": case "slot6":
         this.input.slotPressed[parseInt(action.slice(4)) - 1] = true; break;
     }
@@ -458,6 +484,9 @@ export class Game {
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
+    this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
+    this.arenaMode = false; this.arenaSavedWorldX = 0; this.arenaSavedPx = 0; this.arenaSavedCamX = 0;
+    this.defeatedBossIds.clear();
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
@@ -503,9 +532,9 @@ export class Game {
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
-    if (it.grenades) this.pGrenades += it.grenades;
+    if (it.grenades) this.miscAmmo += it.grenades;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
   }
@@ -515,7 +544,7 @@ export class Game {
     if (!this.spendCurrency(a.cost, a.currency)) return;
     (this as any).allies = (this as any).allies || [];
     (this as any).allies.push({ def: a, x: this.px - 40, y: this.py, hp: a.hp, fireCd: 0 });
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Recruited ${a.name}`);
     this.emitStats();
   }
@@ -525,17 +554,33 @@ export class Game {
     if (this.inventory.augments.includes(id)) return;
     if (!this.spendCurrency(a.cost, a.currency)) return;
     this.inventory.augments.push(id);
-    // Apply simple effects immediately
     if (id === "aug_hp_s") { this.pMaxHp += 15; this.pHp += 15; }
     if (id === "aug_dash") { (this as any).pMaxDashCharges = ((this as any).pMaxDashCharges || 2) + 1; }
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Augment: ${a.name}`);
     this.emitStats();
   }
+  // Add a status augment to the active ranged weapon (max 3 per weapon).
+  buyStatusAugment(statusId: string, cost: number) {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    const key = `${wid}:${statusId}`;
+    const owned = this.inventory.augments.filter(a => a.startsWith(`${wid}:`)).length;
+    if (owned >= 3) { this.flashDescription("MAX 3 PER WEAPON"); return; }
+    if (this.inventory.augments.includes(key)) { this.flashDescription("ALREADY APPLIED"); return; }
+    if (!this.spendCurrency(cost, "crystals")) { this.flashDescription("NOT ENOUGH CRYSTALS"); return; }
+    this.inventory.augments.push(key);
+    audio.play("applepay");
+    this.flashDescription(`${statusId.toUpperCase()} → ${wid}`);
+    this.emitStats();
+  }
+  hasStatusOnActive(statusId: string): boolean {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    return this.inventory.augments.includes(`${wid}:${statusId}`);
+  }
   private spendCurrency(cost: number, cur: "coins"|"tokens"|"crystals"): boolean {
-    if (cur === "coins") { if (this.pCoins < cost) return false; this.pCoins -= cost; return true; }
-    if (cur === "tokens") { if (this.pTokens < cost) return false; this.pTokens -= cost; return true; }
-    if (this.pCrystals < cost) return false; this.pCrystals -= cost; return true;
+    if (cur === "coins") { if (this.coins < cost) return false; this.coins -= cost; return true; }
+    if (cur === "tokens") { if (this.tokens < cost) return false; this.tokens -= cost; return true; }
+    if (this.crystals < cost) return false; this.crystals -= cost; return true;
   }
 
   // Equip APIs (class-aware)
@@ -937,9 +982,9 @@ export class Game {
 
     this.updatePlatforms(dt);
     this.updateEnemies(dt);
+    this.tickStatuses(dt);
 
     // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
-    // Every 5th tier increase shouts "THE TIDE IS RISING".
     {
       const newTier = Math.floor(meters / 111);
       if (newTier > this.spawnTier) {
@@ -956,11 +1001,14 @@ export class Game {
         }
       }
       this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
+      // No spawning while in arena (only the boss exists) or while standing in safe zone.
+      const canSpawn = !this.arenaMode && !this.inSafeZone;
+      if (canSpawn && this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
         this.spawnEnemy();
         this.enemiesSpawned++;
-        // Pace: faster rate as the tier grows. Start gentle ~0.5/s, ramp linearly.
-        const rate = 0.5 + 0.35 * this.spawnTier;
+        // Faster pace as player moves faster, so density doesn't lag.
+        const speedBonus = 1 + Math.min(2, Math.abs(this.pvx) / (40 * PX_PER_METER));
+        const rate = (0.5 + 0.35 * this.spawnTier) * speedBonus;
         const interval = 1 / Math.max(0.2, rate);
         this.spawnTimer = interval * rand(0.85, 1.15);
         if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
@@ -1006,30 +1054,48 @@ export class Game {
       return true;
     });
 
-    // Landmarks
-    const metersNow = Math.floor(this.worldX / PX_PER_METER);
-    if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
-      const baseM = metersNow + 200;
-      const nextMain = Math.ceil(baseM / 1000) * 1000;
-      const lx = nextMain * PX_PER_METER;
-      if (!this.landmarks.find(l => Math.abs(l.x - lx) < 200)) {
-        this.landmarks.push({ x: lx, kind: "main", w: 220 });
-        this.landmarks.push({ x: lx + 260, kind: "ally", w: 200 });
-        if (nextMain % 7777 < 1000) this.landmarks.push({ x: lx + 520, kind: "shady", w: 180 });
+    // Landmarks — fixed-interval milestones (Wave 9)
+    const metersNow = this.worldX / PX_PER_METER;
+    if (!this.arenaMode) {
+      // Main + Augment together every 1234m
+      while (metersNow + 60 >= this.nextMainAt) {
+        const lx = this.nextMainAt * PX_PER_METER;
+        this.landmarks.push({ x: lx,        kind: "main",  w: 220 });
+        this.landmarks.push({ x: lx + 280,  kind: "shady", w: 200 }); // augment / upgrade adjacent
+        this.nextMainAt += 1234;
+      }
+      // Ally shop every 1667m
+      while (metersNow + 60 >= this.nextAllyAt) {
+        const lx = this.nextAllyAt * PX_PER_METER;
+        this.landmarks.push({ x: lx, kind: "ally", w: 220 });
+        this.nextAllyAt += 1667;
+      }
+      // Shady cart every 3333m (extra discount augments — same shop kind)
+      while (metersNow + 60 >= this.nextShadyAt) {
+        const lx = this.nextShadyAt * PX_PER_METER;
+        this.landmarks.push({ x: lx, kind: "shady", w: 200 });
+        this.nextShadyAt += 3333;
       }
     }
     this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
-    this.inSafeZone = this.landmarks.some(l =>
-      this.px + this.pw > l.x && this.px < l.x + l.w);
+    // Safe zone = standing within 9 m (288 px) of any shop landmark center
+    const SAFE_RADIUS = 9 * PX_PER_METER;
+    const pCx = this.px + this.pw/2;
+    this.inSafeZone = this.landmarks.some(l => {
+      if (l.kind === "boss") return false;
+      const cx = l.x + l.w/2;
+      return Math.abs(pCx - cx) < SAFE_RADIUS;
+    });
 
     // Weather (excluding day/night which is independent)
     this.weatherSwitch -= dt;
-    if (this.weatherSwitch <= 0) {
+    if (this.weatherSwitch <= 0 && !this.arenaMode) {
       const opts: any[] = ["clear","clear","rain","snow","storm","fog","windy"];
       this.weather = opts[Math.floor(Math.random() * opts.length)];
       this.weatherSwitch = rand(45, 90);
       this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
     }
+    if (this.arenaMode) this.weather = "clear";
     if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
       for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
     }
@@ -1055,26 +1121,28 @@ export class Game {
     }
 
     this.warnTimer -= dt;
-    // Boss milestone spawn (every 555m)
+    // Boss milestone — every 5555m. Teleport into separate arena.
     const metersNowBoss = this.worldX / PX_PER_METER;
-    const dueMilestone = Math.floor(metersNowBoss / BOSS_SPAWN_INTERVAL_METERS) + 1;
-    if (!this.bossActive && dueMilestone > this.nextBossMilestone - 1 && metersNowBoss >= (this.nextBossMilestone) * BOSS_SPAWN_INTERVAL_METERS - 5) {
-      this.spawnBoss(this.nextBossMilestone);
+    if (!this.arenaMode && !this.bossActive && metersNowBoss >= this.nextBossMilestone * 5555 - 5) {
+      this.enterBossArena(this.nextBossMilestone);
       this.nextBossMilestone++;
     }
     // Arena wall clamp while boss is alive
-    if (this.bossActive && !this.bossActive.dying) {
+    if (this.arenaMode && this.bossActive && !this.bossActive.dying) {
       if (this.px < this.arenaLeft) this.px = this.arenaLeft;
       if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
     }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
-      const m = Math.floor(this.worldX / PX_PER_METER);
-      const toShop = 1000 - (m % 1000);
-      const toBoss = 5555 - (m % 5555);
-      if (toBoss < 80) this.warning = `BOSS APPROACHING — ${toBoss}m`;
-      else if (toShop < 60) this.warning = `Main shop — ${toShop}m`;
-      else if (this.inSafeZone) this.warning = `SAFEZONE — protected`;
+      const m = Math.floor(metersNow);
+      const toMain  = Math.max(0, this.nextMainAt - m);
+      const toAlly  = Math.max(0, this.nextAllyAt - m);
+      const toBoss  = Math.max(0, this.nextBossMilestone * 5555 - m);
+      if (this.arenaMode && this.bossActive) this.warning = `ARENA — ${this.bossActive.bossName}`;
+      else if (toBoss < 100) this.warning = `BOSS ARENA APPROACHING — ${toBoss}m`;
+      else if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
+      else if (toAlly < 80)  this.warning = `Ally shop — ${toAlly}m`;
+      else if (this.inSafeZone) this.warning = `SAFE ZONE — press T to enter shop`;
       else this.warning = null;
     }
 
@@ -1373,10 +1441,40 @@ export class Game {
     void prevBottomDummy;
   }
 
+  private enterBossArena(milestone: number) {
+    // Snapshot current world state so we can restore on victory.
+    this.arenaSavedWorldX = this.worldX;
+    this.arenaSavedPx = this.px;
+    this.arenaSavedCamX = this.camX;
+    // Wipe live entities for a clean stadium.
+    this.enemies = [];
+    this.bullets = [];
+    this.pickups = [];
+    this.worldPickups = [];
+    this.landmarks = this.landmarks.filter(l => l.kind === "boss" ? false : false); // clear all
+    this.arenaMode = true;
+    // Place player center-left of the arena.
+    this.px = 200;
+    this.camX = 0;
+    this.spawnBoss(milestone);
+    this.flashDescription("BOSS ARENA — defeat the boss to escape!");
+  }
+  private exitBossArena() {
+    this.arenaMode = false;
+    this.bossActive = null;
+    this.arenaLeft = 0; this.arenaRight = 0;
+    // Restore world position so the run continues from where the player was teleported.
+    this.worldX = this.arenaSavedWorldX;
+    this.px = this.arenaSavedPx;
+    this.camX = this.arenaSavedCamX;
+    this.enemies = [];
+    this.flashDescription("ARENA CLEARED — back to the run.");
+  }
   private spawnBoss(milestone: number) {
     const def = bossForMilestone(milestone);
     const hpMul = this.diffEnemyHp();
-    const spawnX = this.camX + W * 0.6;
+    // In arena mode spawn dead-center; otherwise spawn ahead of camera (legacy fallback).
+    const spawnX = this.arenaMode ? (this.camX + W * 0.65) : (this.camX + W * 0.6);
     const spawnY = GROUND_Y - def.h;
     const boss: Enemy = {
       type: "brute" as EnemyType,
@@ -1394,12 +1492,14 @@ export class Game {
       bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
       bossAbilities: def.abilities,
       bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
+      statuses: [],
     };
     this.enemies.push(boss);
     this.bossActive = boss;
-    this.arenaLeft = spawnX - 600;
-    this.arenaRight = spawnX + 600;
-    this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
+    // Arena clamp uses the visible viewport.
+    this.arenaLeft = this.camX + 32;
+    this.arenaRight = this.camX + W - 32;
+    if (!this.arenaMode) this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
     audio.play("boss");
     this.flashDescription(def.flavor);
     this.screenShake = Math.max(this.screenShake, 12);
@@ -1443,7 +1543,7 @@ export class Game {
       flying, baseY,
       jumpCd: 0, disabled: 0, grabbed: false,
       thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false,
+      legPhase: 0, glintTimer: 0, dying: false, statuses: [],
     });
     if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
@@ -1459,6 +1559,19 @@ export class Game {
       if (e.x < this.camX - 300) return false;
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
       e.legPhase += dt * 10;
+
+      // Safe-zone gate: enemies near a shop landmark center freeze + don't fire.
+      const SAFE_RADIUS = 9 * PX_PER_METER;
+      const inSafe = !e.isBoss && this.landmarks.some(l => l.kind !== "boss" &&
+        Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
+
+      // Status freeze
+      const speedMul = this.statusSpeedMul(e);
+      if (inSafe || speedMul === 0) {
+        // No movement, no firing, no AI tick. Still apply gravity for non-fliers.
+        if (!e.flying) { e.vy += 1700 * dt; e.y += e.vy * dt; if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; } }
+        return e.hp > 0 || e.dying;
+      }
 
       // Death glint phase
       if (e.dying) {
@@ -1659,13 +1772,13 @@ export class Game {
           e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
         }
       }
-      if (!e.thrown) e.x += e.vx * dt * espd;
+      if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
       // Touch damage
       const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching && !e.thrown) {
-        const m = this.diffEnemyDmg();
+        const m = this.diffEnemyDmg() * this.statusAttackMul(e);
         if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
         else if (e.type === "rider") this.damagePlayer(15 * m);
         else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12 * m);
@@ -1679,8 +1792,9 @@ export class Game {
         if (e.isBoss) {
           audio.play("bossDeath");
           this.bossKills++;
-          if (this.bossActive === e) { this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0; }
-          // Boss loot bundle: special drop + coins + medkit + powerup + crystals + tokens
+          if (e.bossId) this.defeatedBossIds.add(e.bossId);
+          if (this.bossActive === e) { this.bossActive = null; }
+          // Boss loot bundle
           this.coins += randi(50, 150);
           this.crystals += randi(1, 3);
           this.tokens += randi(1, 2);
@@ -1691,12 +1805,13 @@ export class Game {
           } else if (e.bossDropAlly) {
             this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
           }
-          // Boss explosion particles
           for (let i = 0; i < 40; i++) this.particles.push({
             x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
             life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
           });
           this.screenShake = Math.max(this.screenShake, 20);
+          // Schedule arena exit shortly after death glint.
+          if (this.arenaMode) setTimeout(() => this.exitBossArena(), 1200);
         } else {
           audio.play("kill");
         }
@@ -1723,6 +1838,7 @@ export class Game {
 
   private damageEnemy(e: Enemy, dmg: number) {
     if (e.dying) return;
+    if (this.hasStatusOnActive("ultracrit") && Math.random() < 0.01) dmg *= 4;
     e.hp -= dmg;
     e.hurtFlash = 0.12;
     this.totalDmg += dmg;
@@ -1732,17 +1848,81 @@ export class Game {
       x: e.x, y: e.y + e.h/2, vx: rand(-120, 120), vy: rand(-200, -40),
       life: 0.4, max: 0.4, color: "#ffd166", size: 2,
     });
+    this.applyWeaponStatuses(e);
+  }
+  private applyWeaponStatuses(e: Enemy) {
+    if (!e.statuses) e.statuses = [];
+    const now = performance.now() / 1000;
+    const apply = (k: StatusKind, dur: number, data?: any) => {
+      if (!this.hasStatusOnActive(k)) return;
+      const ex = e.statuses!.find(s => s.kind === k);
+      if (ex) { ex.until = now + dur; if (data) ex.data = data; }
+      else e.statuses!.push({ kind: k, until: now + dur, data });
+    };
+    apply("fire", 5, { dps: 10 });
+    apply("enfeeble", 5);
+    apply("freeze", 3);
+    apply("slow", 5);
+    if (this.hasStatusOnActive("lightning")) {
+      let src = e; const chained: Enemy[] = [];
+      for (let i = 0; i < 4; i++) {
+        const next = this.enemies.find(ee =>
+          ee !== src && ee !== e && !ee.dying && !chained.includes(ee) &&
+          Math.hypot(ee.x - src.x, ee.y - src.y) < 140);
+        if (!next) break;
+        chained.push(next);
+        next.hp -= 8; next.hurtFlash = 0.12;
+        for (let p = 0; p < 4; p++) this.particles.push({
+          x: src.x + (next.x - src.x) * (p/4),
+          y: src.y + (next.y - src.y) * (p/4),
+          vx: 0, vy: 0, life: 0.18, max: 0.18, color: "#7be0ff", size: 2,
+        });
+        src = next;
+      }
+    }
+  }
+  private tickStatuses(dt: number) {
+    const now = performance.now() / 1000;
+    for (const e of this.enemies) {
+      if (!e.statuses || e.dying) continue;
+      e.statuses = e.statuses.filter(s => s.until > now);
+      for (const s of e.statuses) {
+        if (s.kind === "fire") {
+          e.hp -= (s.data?.dps ?? 10) * dt;
+          e.hurtFlash = Math.max(e.hurtFlash, 0.05);
+        }
+      }
+    }
+  }
+  private statusSpeedMul(e: Enemy): number {
+    if (!e.statuses) return 1;
+    const now = performance.now() / 1000;
+    let mul = 1;
+    for (const s of e.statuses) {
+      if (s.until <= now) continue;
+      if (s.kind === "freeze") return 0;
+      if (s.kind === "slow") mul *= 0.5;
+    }
+    return mul;
+  }
+  private statusAttackMul(e: Enemy): number {
+    if (!e.statuses) return 1;
+    const now = performance.now() / 1000;
+    for (const s of e.statuses) {
+      if (s.until > now && s.kind === "enfeeble") return 0.2;
+    }
+    return 1;
   }
 
   private dropLoot(e: Enemy) {
     const heavy = e.type === "brute" || e.type === "bruteHeavy" || e.type === "shooterElite";
-    const coinChance = heavy ? 0.7 : 0.35;
+    const coinChance = heavy ? 0.55 : 0.25; // -25% per Wave 9 rebalance
     if (Math.random() < coinChance) {
       const v = heavy ? randi(120, 480) : randi(50, 100);
       this.pickups.push({ x: e.x, y: e.y, vy: -260, type: "coin", value: v, life: 12 });
     }
-    if (Math.random() < 0.07) this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
-    if (Math.random() < 0.03) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 10), life: 12 });
+    if (Math.random() < 0.035) this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
+    if (Math.random() < 0.015) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 5), life: 12 });
   }
 
   private explode(x: number, y: number, dmg: number, radius: number) {

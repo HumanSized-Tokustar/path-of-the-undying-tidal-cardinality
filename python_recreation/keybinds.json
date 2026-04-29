@@ -16,6 +16,7 @@
   "overdrive": "g",
   "inventory": "tab",
   "pause": "escape",
+  "interact": "return",
   "slot1": "1",
   "slot2": "2",
   "slot3": "3",
