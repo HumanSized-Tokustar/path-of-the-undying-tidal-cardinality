@@ -1773,8 +1773,9 @@ export class Game {
         if (e.isBoss) {
           audio.play("bossDeath");
           this.bossKills++;
-          if (this.bossActive === e) { this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0; }
-          // Boss loot bundle: special drop + coins + medkit + powerup + crystals + tokens
+          if (e.bossId) this.defeatedBossIds.add(e.bossId);
+          if (this.bossActive === e) { this.bossActive = null; }
+          // Boss loot bundle
           this.coins += randi(50, 150);
           this.crystals += randi(1, 3);
           this.tokens += randi(1, 2);
@@ -1785,12 +1786,13 @@ export class Game {
           } else if (e.bossDropAlly) {
             this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
           }
-          // Boss explosion particles
           for (let i = 0; i < 40; i++) this.particles.push({
             x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
             life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
           });
           this.screenShake = Math.max(this.screenShake, 20);
+          // Schedule arena exit shortly after death glint.
+          if (this.arenaMode) setTimeout(() => this.exitBossArena(), 1200);
         } else {
           audio.play("kill");
         }
