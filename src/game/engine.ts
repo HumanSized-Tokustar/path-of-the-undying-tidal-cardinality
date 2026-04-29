@@ -1775,7 +1775,7 @@ export class Game {
       const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching && !e.thrown) {
-        const m = this.diffEnemyDmg();
+        const m = this.diffEnemyDmg() * this.statusAttackMul(e);
         if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
         else if (e.type === "rider") this.damagePlayer(15 * m);
         else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12 * m);
