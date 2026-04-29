@@ -90,7 +90,7 @@ interface Bullet {
   x: number; y: number; vx: number; vy: number;
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
   color: string;
-  kind?: "normal" | "molotov";
+  kind?: "normal" | "napalm" | "oil" | "portal" | "disco";
 }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; gravity?: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
@@ -868,12 +868,15 @@ export class Game {
         for (let p = 0; p < w.pellets; p++) {
           const ang = (Math.random() - 0.5) * w.spread + (this.weather === "windy" ? 0.04 : 0);
           const cs = Math.cos(ang), sn = Math.sin(ang);
-          this.bullets.push({
-            x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
-            vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
-            dmg: w.dmg * dmgMult, life: 0.9, friendly: true, r: w.id === "rocket" ? 7 : 4, pierce: w.pierce,
-            color: w.color,
-          });
+          if (w.id === "portalgun") this.placePortal(this.px + this.pFacing * 180, GROUND_Y - 24);
+          else {
+            this.bullets.push({
+              x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
+              vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
+              dmg: w.dmg * dmgMult, life: w.id === "sniper" ? 1.6 : 0.9, friendly: true, r: w.id === "rocket" ? 8 : w.id === "oiler" ? 6 : 4, pierce: w.pierce,
+              color: w.color, kind: w.id === "oiler" ? "oil" : "normal",
+            });
+          }
         }
         audio.play("fire");
         this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
@@ -885,10 +888,14 @@ export class Game {
       this.fireCdM = w.fireCd;
       this.meleeSwing = 1;
       const dmg = w.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
-      const reach = w.id === "katana" ? 80 : 60;
+      const reach = w.id === "yamato" ? 92 : w.id === "katana" ? 82 : w.id === "gauntlet" ? 58 : 60;
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
-            Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
+            Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
+          this.damageEnemy(e, dmg);
+          if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
+          if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
+        }
       });
       audio.play("slash");
     }
@@ -943,13 +950,17 @@ export class Game {
       if (this.weather === "windy" && !b.friendly) b.vx *= 0.998;
       b.x += b.vx * bdt; b.y += b.vy * bdt;
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
-      if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
+      if (b.r >= 8 && b.y > GROUND_Y) {
+        if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
+        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        return false;
+      }
       if (b.friendly) {
         for (const e of this.enemies) {
           if (e.dying) continue;
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
             this.damageEnemy(e, b.dmg);
-            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, 90); return false; }
+            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
             if (b.pierce > 0) { b.pierce--; } else return false;
           }
         }
@@ -1155,8 +1166,24 @@ export class Game {
       if (this.miscAmmo <= 0) { this.flashDescription("OUT OF MISC"); return; }
       (this as any)[cdRef] = w.fireCd;
       this.miscAmmo = Math.max(0, this.miscAmmo - 1);
-      if (w.id === "medkit") this.useMedkit(); // direct heal
-      else if (w.id === "smoke") {
+      if (w.id === "medkit") this.useMedkit();
+      else if (w.id === "shockwave") {
+        this.hazards.push({ kind:"shockwave", x:this.px + this.pFacing * 35, y:GROUND_Y, life:0.45 });
+        this.pvx += this.pFacing * 360; this.pvy = -380;
+        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 180) { e.vx += this.pFacing * 420; e.vy = -420; }
+        this.flashDescription("SHOCKWAVE — everything leaps forward");
+      } else if (w.id === "lightning_rod") {
+        this.hazards.push({ kind:"lightning", x:this.px + this.pFacing * 45, y:GROUND_Y, life:10, cd:0 });
+        this.flashDescription("LIGHTNING ROD PLACED");
+      } else if (w.id === "disposable_shield") {
+        this.hazards.push({ kind:"shield", x:this.px + this.pFacing * 52, y:GROUND_Y - 55, life:10 });
+        this.flashDescription("DISPOSABLE SHIELD — 10s barrier");
+      } else if (w.id === "obliterator_ray") {
+        this.hazards.push({ kind:"ray", x:this.px + this.pw/2, y:this.py + this.ph*0.4, life:0.25 });
+        for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
+        this.flashDescription("OBLITERATOR RAY ∞");
+      }
+      else if ((w.id as any) === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
         const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
         this.parryFlash = Math.max(this.parryFlash, 0.4);
@@ -1198,7 +1225,7 @@ export class Game {
         vx: this.pFacing * v, vy: -380 - charge * 120,
         dmg: (w.dmg || 1) * dmgMult, life: 2.4, friendly: true, r: 8, pierce: 99,
         color: w.color,
-        kind: w.id === "molotov" ? "molotov" : "normal",
+        kind: w.id === "napalm" ? "napalm" : w.id === "disco_bomb" ? "disco" : "normal",
       });
       this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       audio.play("miscthrow");
