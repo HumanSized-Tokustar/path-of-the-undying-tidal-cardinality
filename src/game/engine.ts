@@ -686,28 +686,21 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
+    // Wave 10 movement: deliberately nerfed so the world and enemies keep up.
     const meters = this.worldX / PX_PER_METER;
-    const stepIncrements = Math.floor(meters / 300);
-    // Distance-based pace still scales difficulty/spawns internally but player walk speed is capped.
-    const paceMs = Math.min(105, 15 + stepIncrements * 10);
-    this.paceMult = paceMs / 15;
+    const stepIncrements = Math.floor(meters / 900);
+    const paceMs = Math.min(18, 8 + stepIncrements * 0.75);
+    this.paceMult = paceMs / 8;
 
-    // PLAYER MAX SPEED HARD CAP: 40 m/s (user cap — prevents out-running loaded world).
-    const PLAYER_MAX_MS = 40;
-    const baseMs = Math.min(PLAYER_MAX_MS, paceMs);
-
-    // Movement: convert m/s to px/s
-    let speed = baseMs * (PX_PER_METER / 3);
-    if (this.rolling) speed *= 1.6;
-    if (this.odActive) speed *= 1.25;
-    if (this.puSpeed > 0) speed *= 2;
+    let speed = paceMs * (PX_PER_METER / 3);
+    if (this.rolling) speed *= 1.18;
+    if (this.odActive) speed *= 1.08;
+    if (this.puSpeed > 0) speed *= 1.25;
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
-    // Final clamp so buffs can't blow past the cap in world-units.
-    const MAX_PX = PLAYER_MAX_MS * PX_PER_METER * 1.6; // allow roll/OD/powerup bonus up to 1.6×
-    speed = Math.min(speed, MAX_PX);
+    const PLAYER_MAX_MS = 22;
+    speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -722,30 +715,30 @@ export class Game {
 
     // Dash (Q) — with i-frames
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
-      this.dashTime = 0.28;
-      this.pInv = Math.max(this.pInv, 0.28);
+      this.dashTime = 0.18;
+      this.pInv = Math.max(this.pInv, 0.18);
       this.dashCharges--;
-      if (this.dashRecharge <= 0) this.dashRecharge = 2;
+      if (this.dashRecharge <= 0) this.dashRecharge = 2.6;
     }
     // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
     const rollPressed = (this as any).rollPressed as boolean;
     if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
       this.rolling = true;
-      this.rollTime = 0.56;
-      this.pInv = Math.max(this.pInv, 0.56);
+      this.rollTime = 0.38;
+      this.pInv = Math.max(this.pInv, 0.38);
       this.rollCharges--;
-      if (this.rollRecharge <= 0) this.rollRecharge = 4; // 2× dash recharge
+      if (this.rollRecharge <= 0) this.rollRecharge = 5;
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * 3.4;
+      this.pvx = this.pFacing * speed * 1.75;
       this.dashTime -= dt;
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
       this.rollTime -= dt;
-      this.pvx = this.pFacing * speed * 1.8;
+      this.pvx = this.pFacing * speed * 1.25;
       // Knock enemies in path away
       const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
       for (const e of this.enemies) {
@@ -997,36 +990,31 @@ export class Game {
     this.updateEnemies(dt);
     this.tickStatuses(dt);
 
-    // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
+    // === Wave 10 spawn system: base 5 enemies / 5s, +6 every 666m, SON doubles.
     {
-      const newTier = Math.floor(meters / 111);
+      const cap = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
+      const newTier = Math.min(cap, Math.floor(meters / 666));
       if (newTier > this.spawnTier) {
-        const tiersGained = newTier - this.spawnTier;
-        this.spawnTier = newTier;
-        this.spawnAllowance = Math.min(100, this.spawnAllowance + 5 * tiersGained);
-        for (let i = 0; i < tiersGained; i++) {
+        for (let i = this.spawnTier + 1; i <= newTier; i++) {
           this.tideMessageCount++;
           if (this.tideMessageCount % 5 === 0) {
-            this.tideMsgText = "THE TIDE IS RISING";
+            this.tideMsgText = "(THE TIDE RISES)";
             this.tideMsgTimer = 3.5;
             this.screenShake = Math.max(this.screenShake, 8);
           }
         }
+        this.spawnTier = newTier;
       }
-      this.spawnTimer -= dt;
-      // No spawning while in arena (only the boss exists) or while standing in safe zone.
-      const canSpawn = !this.arenaMode && !this.inSafeZone;
-      if (canSpawn && this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
-        this.spawnEnemy();
-        this.enemiesSpawned++;
-        // Faster pace as player moves faster, so density doesn't lag.
-        const speedBonus = 1 + Math.min(2, Math.abs(this.pvx) / (40 * PX_PER_METER));
-        const rate = (0.5 + 0.35 * this.spawnTier) * speedBonus;
-        const interval = 1 / Math.max(0.2, rate);
-        this.spawnTimer = interval * rand(0.85, 1.15);
-        if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
-          this.spawnEnemy(); this.enemiesSpawned++;
-        }
+      this.spawnAllowance = (5 + this.spawnTier * 6) * (this.difficulty === "son" ? 2 : 1);
+      this.spawnTimer -= dt * (1 + Math.min(2.5, Math.max(0, this.pvx) / Math.max(1, speed)));
+      const canSpawn = !this.inSafeZone;
+      if (canSpawn && this.spawnTimer <= 0) {
+        const target = Math.min(90, this.spawnAllowance);
+        const current = this.enemies.filter(e => !e.dying).length;
+        const burst = Math.max(1, Math.min(target - current, Math.ceil(target / 5)));
+        for (let i = 0; i < burst; i++) this.spawnEnemy();
+        this.enemiesSpawned += Math.max(0, burst);
+        this.spawnTimer = 1.0;
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
@@ -1134,30 +1122,19 @@ export class Game {
     }
 
     this.warnTimer -= dt;
-    // Boss milestone — every 5555m. Teleport into separate arena.
-    const metersNowBoss = this.worldX / PX_PER_METER;
-    if (!this.arenaMode && !this.bossActive && metersNowBoss >= this.nextBossMilestone * 5555 - 5) {
-      this.enterBossArena(this.nextBossMilestone);
-      this.nextBossMilestone++;
-    }
-    // Arena wall clamp while boss is alive
-    if (this.arenaMode && this.bossActive && !this.bossActive.dying) {
-      if (this.px < this.arenaLeft) this.px = this.arenaLeft;
-      if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
-    }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
       const m = Math.floor(metersNow);
       const toMain  = Math.max(0, this.nextMainAt - m);
       const toAlly  = Math.max(0, this.nextAllyAt - m);
-      const toBoss  = Math.max(0, this.nextBossMilestone * 5555 - m);
-      if (this.arenaMode && this.bossActive) this.warning = `ARENA — ${this.bossActive.bossName}`;
-      else if (toBoss < 100) this.warning = `BOSS ARENA APPROACHING — ${toBoss}m`;
-      else if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
+      if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
       else if (toAlly < 80)  this.warning = `Ally shop — ${toAlly}m`;
       else if (this.inSafeZone) this.warning = `SAFE ZONE — press T to enter shop`;
       else this.warning = null;
     }
+
+    this.updateAllies(dt);
+    this.updateHazards(dt);
 
     if (this.screenShake > 0) this.screenShake -= dt * 30;
     if (this.pHp <= 0) this.die();
@@ -1452,72 +1429,6 @@ export class Game {
       }
     }
     void prevBottomDummy;
-  }
-
-  private enterBossArena(milestone: number) {
-    // Snapshot current world state so we can restore on victory.
-    this.arenaSavedWorldX = this.worldX;
-    this.arenaSavedPx = this.px;
-    this.arenaSavedCamX = this.camX;
-    // Wipe live entities for a clean stadium.
-    this.enemies = [];
-    this.bullets = [];
-    this.pickups = [];
-    this.worldPickups = [];
-    this.landmarks = this.landmarks.filter(l => l.kind === "boss" ? false : false); // clear all
-    this.arenaMode = true;
-    // Place player center-left of the arena.
-    this.px = 200;
-    this.camX = 0;
-    this.spawnBoss(milestone);
-    this.flashDescription("BOSS ARENA — defeat the boss to escape!");
-  }
-  private exitBossArena() {
-    this.arenaMode = false;
-    this.bossActive = null;
-    this.arenaLeft = 0; this.arenaRight = 0;
-    // Restore world position so the run continues from where the player was teleported.
-    this.worldX = this.arenaSavedWorldX;
-    this.px = this.arenaSavedPx;
-    this.camX = this.arenaSavedCamX;
-    this.enemies = [];
-    this.flashDescription("ARENA CLEARED — back to the run.");
-  }
-  private spawnBoss(milestone: number) {
-    const def = bossForMilestone(milestone);
-    const hpMul = this.diffEnemyHp();
-    // In arena mode spawn dead-center; otherwise spawn ahead of camera (legacy fallback).
-    const spawnX = this.arenaMode ? (this.camX + W * 0.65) : (this.camX + W * 0.6);
-    const spawnY = GROUND_Y - def.h;
-    const boss: Enemy = {
-      type: "brute" as EnemyType,
-      x: spawnX, y: spawnY, vx: 0, vy: 0,
-      w: def.w, h: def.h, hp: def.hp * hpMul, maxHp: def.hp * hpMul,
-      onGround: true, facing: -1,
-      fireCd: 1.5, aiTimer: 0, targetDx: 0, hurtFlash: 0,
-      burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
-      flying: false, baseY: spawnY,
-      jumpCd: 0, disabled: 0, grabbed: false,
-      thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false,
-      isBoss: true, bossId: def.id, bossName: def.name,
-      shield: def.shield, maxShield: def.shield, shieldRegens: def.shieldRegens,
-      bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
-      bossAbilities: def.abilities,
-      bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
-      statuses: [],
-    };
-    this.enemies.push(boss);
-    this.bossActive = boss;
-    // Arena clamp uses the visible viewport.
-    this.arenaLeft = this.camX + 32;
-    this.arenaRight = this.camX + W - 32;
-    if (!this.arenaMode) this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
-    audio.play("boss");
-    this.flashDescription(def.flavor);
-    this.screenShake = Math.max(this.screenShake, 12);
-    this.warning = `BOSS: ${def.name} — ${def.abilities.join(" • ")}`;
-    this.warnTimer = 5;
   }
 
   private spawnEnemy() {
