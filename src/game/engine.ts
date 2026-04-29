@@ -1557,6 +1557,19 @@ export class Game {
       e.hurtFlash = Math.max(0, e.hurtFlash - dt);
       e.legPhase += dt * 10;
 
+      // Safe-zone gate: enemies near a shop landmark center freeze + don't fire.
+      const SAFE_RADIUS = 9 * PX_PER_METER;
+      const inSafe = !e.isBoss && this.landmarks.some(l => l.kind !== "boss" &&
+        Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
+
+      // Status freeze
+      const speedMul = this.statusSpeedMul(e);
+      if (inSafe || speedMul === 0) {
+        // No movement, no firing, no AI tick. Still apply gravity for non-fliers.
+        if (!e.flying) { e.vy += 1700 * dt; e.y += e.vy * dt; if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; } }
+        return e.hp > 0 || e.dying;
+      }
+
       // Death glint phase
       if (e.dying) {
         e.glintTimer -= dt;
