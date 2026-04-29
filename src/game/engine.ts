@@ -75,6 +75,7 @@ interface Input {
   grabReleased: boolean;
   inventoryPressed: boolean;       // Y
   pausePressed: boolean;           // P
+  interactPressed: boolean;        // ENTER (shop interact / buy selected)
   slotPressed: boolean[]; // 1..6
   wheelDelta: number;
 }
@@ -319,6 +320,7 @@ export class Game {
       parryPressed: false, grabPressed: false,
       grab: false, grabReleased: false,
       inventoryPressed: false, pausePressed: false,
+      interactPressed: false,
       slotPressed: [false,false,false,false,false,false],
       wheelDelta: 0,
     };
@@ -405,6 +407,8 @@ export class Game {
       case "grab": this.input.grab = true; this.input.grabPressed = true; break;
       case "inventory": this.input.inventoryPressed = true; break;
       case "pause": this.input.pausePressed = true; break;
+      case "shop": this.toggleShop(); break;
+      case "interact": this.input.interactPressed = true; break;
       case "slot1": case "slot2": case "slot3": case "slot4": case "slot5": case "slot6":
         this.input.slotPressed[parseInt(action.slice(4)) - 1] = true; break;
     }
