@@ -28,7 +28,6 @@ export const DeathScreen = ({ stats, onRestart }: { stats: GameStats; onRestart:
           <Stat k="TIME" v={formatTime(stats.timeAlive)} />
           <Stat k="TOTAL DMG" v={Math.floor(stats.totalDamage).toString()} />
           <Stat k="KILLS" v={stats.kills.toString()} />
-          <Stat k="BOSSES" v={stats.bossKills.toString()} />
           <Stat k="COINS" v={stats.coins.toString()} />
         </div>
 

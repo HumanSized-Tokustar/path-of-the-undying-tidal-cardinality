@@ -134,7 +134,7 @@ export const InventoryOverlay = ({ game, stats }: { game: Game; stats: GameStats
             <div>Distance: {Math.floor(stats.distance)} m</div>
             <div>Time alive: {Math.floor(stats.timeAlive)}s</div>
             <div>Total damage: {Math.floor(stats.totalDamage)}</div>
-            <div>Kills: {stats.kills}  •  Bosses: {stats.bossKills}</div>
+            <div>Kills: {stats.kills}</div>
             <div>Coins: {stats.coins}  •  Tokens: {stats.tokens}  •  Crystals: {stats.crystals}</div>
             <div>Difficulty: <span className="text-[#ffd84a]">{stats.difficulty.toUpperCase()}</span> (locked mid-run)</div>
             <div>Rank: <span className={stats.rankColor}>{stats.rank}</span></div>

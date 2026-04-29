@@ -169,7 +169,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
 
           {kind === "ally" && (
             <>
-              <div className="text-[9px] mb-2" style={{ color: palette.text }}>SCROLL FOR MORE →   (max allies: 20, 50 if all bosses beaten)</div>
+              <div className="text-[9px] mb-2" style={{ color: palette.text }}>SCROLL FOR MORE →   timed allies fight until lifespan ends</div>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {ALLIES.map(a => {
                   const ok = canAfford(a.cost, a.currency);
