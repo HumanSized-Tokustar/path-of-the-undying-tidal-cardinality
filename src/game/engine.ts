@@ -1769,7 +1769,7 @@ export class Game {
           e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
         }
       }
-      if (!e.thrown) e.x += e.vx * dt * espd;
+      if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
       // Touch damage
       const touching = !e.disabled && e.x - e.w/2 < this.px + this.pw && e.x + e.w/2 > this.px &&
