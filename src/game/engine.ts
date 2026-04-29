@@ -1543,7 +1543,7 @@ export class Game {
       flying, baseY,
       jumpCd: 0, disabled: 0, grabbed: false,
       thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false,
+      legPhase: 0, glintTimer: 0, dying: false, statuses: [],
     });
     if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
