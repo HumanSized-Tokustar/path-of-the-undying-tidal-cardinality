@@ -503,9 +503,9 @@ export class Game {
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
-    if (it.grenades) this.pGrenades += it.grenades;
+    if (it.grenades) this.miscAmmo += it.grenades;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
   }
@@ -515,7 +515,7 @@ export class Game {
     if (!this.spendCurrency(a.cost, a.currency)) return;
     (this as any).allies = (this as any).allies || [];
     (this as any).allies.push({ def: a, x: this.px - 40, y: this.py, hp: a.hp, fireCd: 0 });
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Recruited ${a.name}`);
     this.emitStats();
   }
@@ -525,17 +525,33 @@ export class Game {
     if (this.inventory.augments.includes(id)) return;
     if (!this.spendCurrency(a.cost, a.currency)) return;
     this.inventory.augments.push(id);
-    // Apply simple effects immediately
     if (id === "aug_hp_s") { this.pMaxHp += 15; this.pHp += 15; }
     if (id === "aug_dash") { (this as any).pMaxDashCharges = ((this as any).pMaxDashCharges || 2) + 1; }
-    audio.play("pickup");
+    audio.play("applepay");
     this.flashDescription(`Augment: ${a.name}`);
     this.emitStats();
   }
+  // Add a status augment to the active ranged weapon (max 3 per weapon).
+  buyStatusAugment(statusId: string, cost: number) {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    const key = `${wid}:${statusId}`;
+    const owned = this.inventory.augments.filter(a => a.startsWith(`${wid}:`)).length;
+    if (owned >= 3) { this.flashDescription("MAX 3 PER WEAPON"); return; }
+    if (this.inventory.augments.includes(key)) { this.flashDescription("ALREADY APPLIED"); return; }
+    if (!this.spendCurrency(cost, "crystals")) { this.flashDescription("NOT ENOUGH CRYSTALS"); return; }
+    this.inventory.augments.push(key);
+    audio.play("applepay");
+    this.flashDescription(`${statusId.toUpperCase()} → ${wid}`);
+    this.emitStats();
+  }
+  hasStatusOnActive(statusId: string): boolean {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    return this.inventory.augments.includes(`${wid}:${statusId}`);
+  }
   private spendCurrency(cost: number, cur: "coins"|"tokens"|"crystals"): boolean {
-    if (cur === "coins") { if (this.pCoins < cost) return false; this.pCoins -= cost; return true; }
-    if (cur === "tokens") { if (this.pTokens < cost) return false; this.pTokens -= cost; return true; }
-    if (this.pCrystals < cost) return false; this.pCrystals -= cost; return true;
+    if (cur === "coins") { if (this.coins < cost) return false; this.coins -= cost; return true; }
+    if (cur === "tokens") { if (this.tokens < cost) return false; this.tokens -= cost; return true; }
+    if (this.crystals < cost) return false; this.crystals -= cost; return true;
   }
 
   // Equip APIs (class-aware)
