@@ -1057,7 +1057,7 @@ export class Game {
 
     // Landmarks — fixed-interval milestones (Wave 9)
     const metersNow = this.worldX / PX_PER_METER;
-    if (!this.arenaMode) {
+    {
       // Main + Augment together every 1234m
       while (metersNow + 60 >= this.nextMainAt) {
         const lx = this.nextMainAt * PX_PER_METER;
@@ -1083,20 +1083,18 @@ export class Game {
     const SAFE_RADIUS = 9 * PX_PER_METER;
     const pCx = this.px + this.pw/2;
     this.inSafeZone = this.landmarks.some(l => {
-      if (l.kind === "boss") return false;
       const cx = l.x + l.w/2;
       return Math.abs(pCx - cx) < SAFE_RADIUS;
     });
 
     // Weather (excluding day/night which is independent)
     this.weatherSwitch -= dt;
-    if (this.weatherSwitch <= 0 && !this.arenaMode) {
+    if (this.weatherSwitch <= 0) {
       const opts: any[] = ["clear","clear","rain","snow","storm","fog","windy"];
       this.weather = opts[Math.floor(Math.random() * opts.length)];
       this.weatherSwitch = rand(45, 90);
       this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
     }
-    if (this.arenaMode) this.weather = "clear";
     if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
       for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
     }
@@ -1167,10 +1165,8 @@ export class Game {
           if (e.dying || e.thrown) continue;
           const d = Math.hypot(e.x - cx, e.y - cy);
           if (d < 360) {
-            // Bosses get reduced stun
-            const isBoss = (e as any).boss === true || e.maxHp > 400;
-            e.disabled = Math.max(e.disabled, isBoss ? 0.8 : 2.5);
-            e.fireCd = Math.max(e.fireCd, isBoss ? 0.6 : 2.0);
+            e.disabled = Math.max(e.disabled, 2.5);
+            e.fireCd = Math.max(e.fireCd, 2.0);
           }
         }
         // Particle burst
@@ -1297,7 +1293,7 @@ export class Game {
       this.flashDescription(`THROW ENEMY — ${Math.round(charge * 100)}% charge`);
       audio.play("miscthrow");
     } else {
-      // Find nearest non-boss enemy in range
+      // Find nearest enemy in range
       let best: Enemy | null = null; let bestD = 70;
       for (const e of this.enemies) {
         if (e.dying || e.thrown) continue;
@@ -1476,7 +1472,7 @@ export class Game {
   }
 
   private updateEnemies(dtRaw: number) {
-    // CHRONO SLOW: enemies experience 50% time (bosses 75% — none yet, so flat 0.5)
+    // CHRONO SLOW: enemies experience 50% time
     const slow = this.puChrono > 0 ? 0.5 : 1;
     const dt = dtRaw * slow;
     this.enemies = this.enemies.filter(e => {
@@ -1486,8 +1482,7 @@ export class Game {
 
       // Safe-zone gate: enemies near a shop landmark center freeze + don't fire.
       const SAFE_RADIUS = 9 * PX_PER_METER;
-      const inSafe = !e.isBoss && this.landmarks.some(l => l.kind !== "boss" &&
-        Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
+      const inSafe = this.landmarks.some(l => Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
 
       // Status freeze
       const speedMul = this.statusSpeedMul(e);
@@ -1713,32 +1708,7 @@ export class Game {
         e.glintTimer = 0.4;
         this.kills++;
         this.comboCount++; this.comboTimer = 3;
-        if (e.isBoss) {
-          audio.play("bossDeath");
-          this.bossKills++;
-          if (e.bossId) this.defeatedBossIds.add(e.bossId);
-          if (this.bossActive === e) { this.bossActive = null; }
-          // Boss loot bundle
-          this.coins += randi(50, 150);
-          this.crystals += randi(1, 3);
-          this.tokens += randi(1, 2);
-          this.pHp = Math.min(this.pMaxHp, this.pHp + 60);
-          if (e.bossDropWeapon && !this.inventory.owned.includes(e.bossDropWeapon)) {
-            this.inventory.owned.push(e.bossDropWeapon);
-            this.flashDescription(`BOSS DROP — ${WEAPONS[e.bossDropWeapon].name.toUpperCase()} ACQUIRED!`);
-          } else if (e.bossDropAlly) {
-            this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
-          }
-          for (let i = 0; i < 40; i++) this.particles.push({
-            x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
-            life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
-          });
-          this.screenShake = Math.max(this.screenShake, 20);
-          // Schedule arena exit shortly after death glint.
-          if (this.arenaMode) setTimeout(() => this.exitBossArena(), 1200);
-        } else {
-          audio.play("kill");
-        }
+        audio.play("kill");
         this.dropLoot(e);
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({
@@ -1934,7 +1904,7 @@ export class Game {
       overdriveBar: this.odBar, overdriveActive: this.odActive, overdriveTime: Math.max(0, this.odTime),
       dashCharges: this.dashCharges, dashCdNext: Math.max(0, this.dashRecharge),
       rollCharges: this.rollCharges, rollCdNext: Math.max(0, this.rollRecharge),
-      kills: this.kills, bossKills: this.bossKills,
+      kills: this.kills, bossKills: 0,
       timeAlive: this.timeAlive,
       rank: rank.label, rankColor: rank.color,
       trackName: audio.currentTrackName(),
@@ -1953,13 +1923,13 @@ export class Game {
 
   computeRank(meters: number): { label: string; color: string } {
     const minutes = this.timeAlive / 60;
-    if (this.bossKills >= 20 || this.coins >= 1_000_000 || meters >= 1_000_000 || this.totalDmg >= 100_000_000 || minutes >= 60)
+    if (this.coins >= 1_000_000 || meters >= 1_000_000 || this.totalDmg >= 100_000_000 || minutes >= 60)
       return { label: "SON 😭👍", color: "rank-son" };
-    if (this.bossKills >= 10 || this.totalDmg >= 300_000 || minutes >= 45) return { label: "S", color: "text-[hsl(var(--rank-s))]" };
-    if (this.bossKills >= 5  || meters >= 500_000 || minutes >= 30) return { label: "A", color: "text-[hsl(var(--rank-a))]" };
-    if (this.bossKills >= 3  || minutes >= 20) return { label: "B", color: "text-[hsl(var(--rank-b))]" };
-    if (this.bossKills >= 2  || minutes >= 15) return { label: "C", color: "text-[hsl(var(--rank-c))]" };
-    if (this.bossKills >= 1  || minutes >= 10) return { label: "D", color: "text-[hsl(var(--rank-d))]" };
+    if (this.totalDmg >= 300_000 || minutes >= 45) return { label: "S", color: "text-[hsl(var(--rank-s))]" };
+    if (meters >= 500_000 || minutes >= 30) return { label: "A", color: "text-[hsl(var(--rank-a))]" };
+    if (minutes >= 20) return { label: "B", color: "text-[hsl(var(--rank-b))]" };
+    if (minutes >= 15) return { label: "C", color: "text-[hsl(var(--rank-c))]" };
+    if (minutes >= 10) return { label: "D", color: "text-[hsl(var(--rank-d))]" };
     return { label: "F", color: "text-[hsl(var(--rank-f))]" };
   }
 
