@@ -1,8 +1,8 @@
 import { audio } from "./audio";
 import { WEAPONS, WeaponId, STARTING_OWNED, STARTING_RANGED, STARTING_MELEE, STARTING_MISC_A, STARTING_MISC_B } from "./weapons";
+import { MAIN_SHOP, ALLIES, AUGMENT_SHOP, AllyDef } from "./shops";
 import { PLATFORM_VARIANTS, PlatformKind, pickPlatformKind } from "./platforms";
-import { actionFor as kbActionFor, normalizeKey as kbNormalize } from "./keybinds";
-import { bossForMilestone, BOSS_SPAWN_INTERVAL_METERS } from "./bosses";
+import { actionFor as kbActionFor, normalizeKey as kbNormalize, onKeybindsChange } from "./keybinds";
 
 // ============================================================
 // PATH OF THE UNDYING TIDAL CARDINALITY — Wave 4 Engine
@@ -45,7 +45,8 @@ type EnemyType =
   | "shooter" | "shooterElite"
   | "shanker" | "shankerSwift"
   | "brute"   | "bruteHeavy"
-  | "rider"   | "bomber" | "sniper";
+  | "rider"   | "bomber" | "sniper"
+  | "necromancer" | "minion" | "bron" | "giant" | "apache";
 
 const ENEMY_COLOR: Record<EnemyType, string> = {
   shooter:      "#e85d3a",
@@ -57,6 +58,11 @@ const ENEMY_COLOR: Record<EnemyType, string> = {
   rider:        "#3aa0e8",
   bomber:       "#888fa8",
   sniper:       "#ff3a6a",
+  necromancer:  "#050505",
+  minion:       "#3a3a44",
+  bron:         "#111111",
+  giant:        "#8b8f98",
+  apache:       "#5f6b77",
 };
 
 interface Input {
@@ -117,38 +123,35 @@ interface Enemy {
   legPhase: number;
   glintTimer: number;     // death glint
   dying: boolean;
-  // Wave 8 — boss extension
-  isBoss?: boolean;
-  bossId?: string;
-  bossName?: string;
-  shield?: number;
-  maxShield?: number;
-  shieldRegens?: number;  // remaining regens left
-  bossColor?: string;
-  bossAccent?: string;
-  bossEye?: string;
-  bossAbilities?: string[];
-  bossDropWeapon?: WeaponId | null;
-  bossDropAlly?: string | null;
-  // Wave 9 — status effects applied by augmented weapons
   statuses?: { kind: StatusKind; until: number; data?: any }[];
+  dashCd?: number;
+  jumpsLeft?: number;
+  summonCd?: number;
 }
 
 export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
 
 export const STATUS_AUGMENTS: { id: StatusKind; name: string; cost: number; desc: string }[] = [
-  { id: "fire",      name: "FIRE",      cost: 20,  desc: "10 dmg/s for 5s." },
-  { id: "lightning", name: "LIGHTNING", cost: 60,  desc: "Chain to 5 enemies." },
-  { id: "enfeeble",  name: "ENFEEBLE",  cost: 76,  desc: "Enemy attack -80% / 5s." },
-  { id: "freeze",    name: "FREEZE",    cost: 100, desc: "Stop enemy 3s." },
-  { id: "slow",      name: "SLOW",      cost: 70,  desc: "Enemy speed -50% / 5s." },
-  { id: "ultracrit", name: "ULTRACRIT", cost: 90,  desc: "1% chance ×4 dmg." },
+  { id: "fire",      name: "FIRE",      cost: 10,  desc: "20 dmg/s for 5s." },
+  { id: "lightning", name: "LIGHTNING CHAIN", cost: 76,  desc: "Hit 5 targets at once." },
+  { id: "enfeeble",  name: "ENFEEBLE",  cost: 100, desc: "Enemy attack -67% / 6s." },
+  { id: "freeze",    name: "FREEZE",    cost: 105, desc: "Stop enemy 3s." },
+  { id: "slow",      name: "SLOW",      cost: 90,  desc: "Enemy speed -67% / 5s." },
+  { id: "ultracrit", name: "ULTRACRIT", cost: 125, desc: "1% chance ×4 dmg with RED GLINT." },
 ];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const randi = (a: number, b: number) => Math.floor(rand(a, b + 1));
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+
+interface FriendlyAlly {
+  def: AllyDef; x: number; y: number; vx: number; vy: number; hp: number; life: number; fireCd: number; specialCd: number; facing: 1 | -1;
+}
+interface FieldHazard {
+  kind: "oil" | "portalA" | "portalB" | "lightning" | "shield" | "disco" | "shockwave" | "ray";
+  x: number; y: number; life: number; cd?: number; pair?: FieldHazard; used?: WeakSet<object>;
+}
 
 export interface InventoryState {
   owned: WeaponId[];
@@ -260,9 +263,9 @@ export class Game {
   private warning: string | null = null;
   private warnTimer = 0;
   private description = "WASD MOVE • SPACE/W JUMP×2 (S+SPACE drop, W on ladder = climb) • Q DASH • Z ROLL • F FIRE • R MELEE • O/P THROW MISC • E PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • ESC PAUSE";
-  private spawnTier = 0;        // grows by 1 per 111m for the tide system
-  private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
-  private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
+  private spawnTier = 0;        // grows every 666m for Wave 10 tide system
+  private spawnAllowance = 5;   // enemies per 5-second wave
+  private tideMessageCount = 0; // every 5th tier triggers "(THE TIDE RISES)"
   private tideMsgTimer = 0;     // overlay timer for the tide banner
   private tideMsgText = "";
   private grabCharge = 0;       // seconds F is held to charge a throw (0..1.5)
@@ -283,22 +286,20 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"|"boss"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
-  // Wave 8 — boss milestone tracker
-  private nextBossMilestone = 1;    // 1 => 5555m, 2 => 11110m, ...
-  private bossActive: Enemy | null = null;
-  private arenaLeft = 0; private arenaRight = 0;
-  // Wave 9 — fixed-interval landmark milestones (in meters)
   private nextMainAt = 1234;
   private nextAllyAt = 1667;
   private nextShadyAt = 3333;
-  // Wave 9 — Boss arena teleport
-  private arenaMode = false;
-  private arenaSavedWorldX = 0; private arenaSavedPx = 0; private arenaSavedCamX = 0;
-  // Track defeated bosses for ally cap
-  private defeatedBossIds = new Set<string>();
+  private maxDashCharges = 2;
+  private maxHpBonusBought = 0;
+  private reviveBuys = 0;
+  private purchaseCounts: Record<string, number> = {};
+  private allies: FriendlyAlly[] = [];
+  private hazards: FieldHazard[] = [];
+  private portalPending: FieldHazard | null = null;
+  private offKeybinds?: () => void;
 
   private last = 0; private rafId = 0;
 
@@ -313,6 +314,7 @@ export class Game {
     this.onStatsChange = opts.onStatsChange;
     this.onPhaseChange = opts.onPhaseChange;
     this.attachInput();
+    this.offKeybinds = onKeybindsChange(() => this.clearInputState());
   }
 
   private makeInput(): Input {
@@ -378,7 +380,13 @@ export class Game {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("wheel", this.onWheel);
+    this.offKeybinds?.();
     cancelAnimationFrame(this.rafId);
+  }
+  private clearInputState() {
+    this.keys.clear();
+    this.input = this.makeInput();
+    (this as any).rollPressed = false;
   }
   private onWheel = (e: WheelEvent) => {
     if (this.phase !== "playing") return;
@@ -459,7 +467,7 @@ export class Game {
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
     this.lives = this.maxLives;
     this.slowFall = 0;
-    this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
+    this.maxDashCharges = 2; this.dashCharges = this.maxDashCharges; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.rollCharges = 2; this.rollRecharge = 0;
     (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
@@ -473,7 +481,7 @@ export class Game {
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
     this.enemiesSpawned = 0;
-    this.spawnTier = 0; this.spawnAllowance = 5;
+    this.spawnTier = 0; this.spawnAllowance = this.difficulty === "son" ? 10 : 5;
     this.tideMessageCount = 0; this.tideMsgTimer = 0; this.tideMsgText = "";
     this.grabCharge = 0;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
@@ -483,10 +491,8 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
-    this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
     this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
-    this.arenaMode = false; this.arenaSavedWorldX = 0; this.arenaSavedPx = 0; this.arenaSavedCamX = 0;
-    this.defeatedBossIds.clear();
+    this.maxHpBonusBought = 0; this.reviveBuys = 0; this.purchaseCounts = {}; this.allies = []; this.hazards = []; this.portalPending = null;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
@@ -526,36 +532,43 @@ export class Game {
     this.onPhaseChange(this.phase);
   }
   buyMainItem(id: string) {
-    const { MAIN_SHOP } = require("./shops") as typeof import("./shops");
     const it = MAIN_SHOP.find(x => x.id === id); if (!it) return;
-    if (!this.spendCurrency(it.cost, it.currency)) return;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (it.limit && bought >= it.limit) { this.flashDescription("PURCHASE LIMIT REACHED"); return; }
+    if (it.weapon && it.limit === 1 && this.inventory.owned.includes(it.weapon)) { this.flashDescription("ALREADY OWNED"); return; }
+    if (!this.spendCurrency(it.cost, it.currency)) { this.flashDescription("NOT ENOUGH CURRENCY"); return; }
+    this.purchaseCounts[id] = bought + 1;
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
     if (it.grenades) this.miscAmmo += it.grenades;
+    if (it.weapon && it.limit && it.limit > 1) this.miscAmmo += 1;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
     audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
   }
   buyAlly(id: string) {
-    const { ALLIES } = require("./shops") as typeof import("./shops");
     const a = ALLIES.find(x => x.id === id); if (!a) return;
-    if (!this.spendCurrency(a.cost, a.currency)) return;
-    (this as any).allies = (this as any).allies || [];
-    (this as any).allies.push({ def: a, x: this.px - 40, y: this.py, hp: a.hp, fireCd: 0 });
+    if (!this.spendCurrency(a.cost, a.currency)) { this.flashDescription("NOT ENOUGH TOKENS"); return; }
+    this.allies.push({ def: a, x: this.px - 40, y: this.py, vx: 0, vy: 0, hp: a.hp, life: a.lifespan, fireCd: 0, specialCd: 20, facing: 1 });
     audio.play("applepay");
     this.flashDescription(`Recruited ${a.name}`);
     this.emitStats();
   }
   buyAugment(id: string) {
-    const { AUGMENT_SHOP } = require("./shops") as typeof import("./shops");
     const a = AUGMENT_SHOP.find(x => x.id === id); if (!a) return;
-    if (this.inventory.augments.includes(id)) return;
-    if (!this.spendCurrency(a.cost, a.currency)) return;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (a.limit && bought >= a.limit) { this.flashDescription("PURCHASE LIMIT REACHED"); return; }
+    if (!a.limit && this.inventory.augments.includes(id)) return;
+    if (!this.spendCurrency(a.cost, a.currency)) { this.flashDescription("NOT ENOUGH CRYSTALS"); return; }
+    this.purchaseCounts[id] = bought + 1;
     this.inventory.augments.push(id);
-    if (id === "aug_hp_s") { this.pMaxHp += 15; this.pHp += 15; }
-    if (id === "aug_dash") { (this as any).pMaxDashCharges = ((this as any).pMaxDashCharges || 2) + 1; }
+    if (a.stat === "ammo50") this.ammo += 50;
+    if (a.stat === "ammo150") this.ammo += 150;
+    if (a.stat === "maxhp" && this.maxHpBonusBought < 500) { const add = Math.min(50, 500 - this.maxHpBonusBought); this.maxHpBonusBought += add; this.pMaxHp += add; this.pHp += add; }
+    if (a.stat === "dash") { this.maxDashCharges += 1; this.dashCharges = Math.min(this.maxDashCharges, this.dashCharges + 1); }
+    if (a.stat === "revive" && this.reviveBuys < 2) { this.reviveBuys++; this.maxLives++; this.lives++; }
     audio.play("applepay");
     this.flashDescription(`Augment: ${a.name}`);
     this.emitStats();
@@ -750,16 +763,16 @@ export class Game {
     }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
-      if (this.dashRecharge <= 0 && this.dashCharges < 2) {
+      if (this.dashRecharge <= 0 && this.dashCharges < this.maxDashCharges) {
         this.dashCharges++;
-        if (this.dashCharges < 2) this.dashRecharge = 2;
+        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = 2.6;
       }
     }
     if (this.rollRecharge > 0) {
       this.rollRecharge -= dt;
       if (this.rollRecharge <= 0 && this.rollCharges < 2) {
         this.rollCharges++;
-        if (this.rollCharges < 2) this.rollRecharge = 4;
+        if (this.rollCharges < 2) this.rollRecharge = 5;
       }
     }
 
