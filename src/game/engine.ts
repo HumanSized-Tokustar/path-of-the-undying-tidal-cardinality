@@ -484,6 +484,9 @@ export class Game {
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
     this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
+    this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
+    this.arenaMode = false; this.arenaSavedWorldX = 0; this.arenaSavedPx = 0; this.arenaSavedCamX = 0;
+    this.defeatedBossIds.clear();
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
