@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { audio } from "@/game/audio";
 import { SettingsOverlay } from "@/components/game/SettingsOverlay";
+import { AlmanacOverlay } from "@/components/game/AlmanacOverlay";
 
 type Difficulty = "dunce" | "alright" | "son";
 
@@ -11,6 +12,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
   const [diff, setDiff] = useState<Difficulty>("alright");
   const setD = (d: Difficulty) => { setDiff(d); onDifficulty?.(d); };
   const [showSettings, setShowSettings] = useState(false);
+  const [showAlmanac, setShowAlmanac] = useState(false);
 
   return (
     <div className="absolute inset-0 grid place-items-center bg-background/85 pixel-text">
@@ -57,7 +59,8 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
             <div className="space-y-2.5">
               <Btn onClick={onStart} primary>▶ START GAME</Btn>
               <Btn onClick={() => setShowSettings(true)}>⚙ SETTINGS / KEYBINDS</Btn>
-              <Btn onClick={() => setView("map")}>🗺 MAP INFO</Btn>
+              <Btn onClick={() => setShowAlmanac(true)}>ALMANAC</Btn>
+              <Btn onClick={() => setView("map")}>MAP INFO</Btn>
               <Btn onClick={() => setView("credits")}>★ CREDITS</Btn>
             </div>
             <div className="mt-4">
@@ -117,6 +120,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
         )}
       </div>
       {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
+      {showAlmanac && <AlmanacOverlay onClose={() => setShowAlmanac(false)} />}
     </div>
   );
 };
