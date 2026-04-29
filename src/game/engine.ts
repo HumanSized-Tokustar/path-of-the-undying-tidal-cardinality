@@ -129,7 +129,20 @@ interface Enemy {
   bossAbilities?: string[];
   bossDropWeapon?: WeaponId | null;
   bossDropAlly?: string | null;
+  // Wave 9 — status effects applied by augmented weapons
+  statuses?: { kind: StatusKind; until: number; data?: any }[];
 }
+
+export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
+
+export const STATUS_AUGMENTS: { id: StatusKind; name: string; cost: number; desc: string }[] = [
+  { id: "fire",      name: "FIRE",      cost: 20,  desc: "10 dmg/s for 5s." },
+  { id: "lightning", name: "LIGHTNING", cost: 60,  desc: "Chain to 5 enemies." },
+  { id: "enfeeble",  name: "ENFEEBLE",  cost: 76,  desc: "Enemy attack -80% / 5s." },
+  { id: "freeze",    name: "FREEZE",    cost: 100, desc: "Stop enemy 3s." },
+  { id: "slow",      name: "SLOW",      cost: 70,  desc: "Enemy speed -50% / 5s." },
+  { id: "ultracrit", name: "ULTRACRIT", cost: 90,  desc: "1% chance ×4 dmg." },
+];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
