@@ -1435,10 +1435,40 @@ export class Game {
     void prevBottomDummy;
   }
 
+  private enterBossArena(milestone: number) {
+    // Snapshot current world state so we can restore on victory.
+    this.arenaSavedWorldX = this.worldX;
+    this.arenaSavedPx = this.px;
+    this.arenaSavedCamX = this.camX;
+    // Wipe live entities for a clean stadium.
+    this.enemies = [];
+    this.bullets = [];
+    this.pickups = [];
+    this.worldPickups = [];
+    this.landmarks = this.landmarks.filter(l => l.kind === "boss" ? false : false); // clear all
+    this.arenaMode = true;
+    // Place player center-left of the arena.
+    this.px = 200;
+    this.camX = 0;
+    this.spawnBoss(milestone);
+    this.flashDescription("BOSS ARENA — defeat the boss to escape!");
+  }
+  private exitBossArena() {
+    this.arenaMode = false;
+    this.bossActive = null;
+    this.arenaLeft = 0; this.arenaRight = 0;
+    // Restore world position so the run continues from where the player was teleported.
+    this.worldX = this.arenaSavedWorldX;
+    this.px = this.arenaSavedPx;
+    this.camX = this.arenaSavedCamX;
+    this.enemies = [];
+    this.flashDescription("ARENA CLEARED — back to the run.");
+  }
   private spawnBoss(milestone: number) {
     const def = bossForMilestone(milestone);
     const hpMul = this.diffEnemyHp();
-    const spawnX = this.camX + W * 0.6;
+    // In arena mode spawn dead-center; otherwise spawn ahead of camera (legacy fallback).
+    const spawnX = this.arenaMode ? (this.camX + W * 0.65) : (this.camX + W * 0.6);
     const spawnY = GROUND_Y - def.h;
     const boss: Enemy = {
       type: "brute" as EnemyType,
@@ -1456,12 +1486,14 @@ export class Game {
       bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
       bossAbilities: def.abilities,
       bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
+      statuses: [],
     };
     this.enemies.push(boss);
     this.bossActive = boss;
-    this.arenaLeft = spawnX - 600;
-    this.arenaRight = spawnX + 600;
-    this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
+    // Arena clamp uses the visible viewport.
+    this.arenaLeft = this.camX + 32;
+    this.arenaRight = this.camX + W - 32;
+    if (!this.arenaMode) this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
     audio.play("boss");
     this.flashDescription(def.flavor);
     this.screenShake = Math.max(this.screenShake, 12);
