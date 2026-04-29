@@ -1819,6 +1819,7 @@ export class Game {
 
   private damageEnemy(e: Enemy, dmg: number) {
     if (e.dying) return;
+    if (this.hasStatusOnActive("ultracrit") && Math.random() < 0.01) dmg *= 4;
     e.hp -= dmg;
     e.hurtFlash = 0.12;
     this.totalDmg += dmg;
@@ -1828,17 +1829,81 @@ export class Game {
       x: e.x, y: e.y + e.h/2, vx: rand(-120, 120), vy: rand(-200, -40),
       life: 0.4, max: 0.4, color: "#ffd166", size: 2,
     });
+    this.applyWeaponStatuses(e);
+  }
+  private applyWeaponStatuses(e: Enemy) {
+    if (!e.statuses) e.statuses = [];
+    const now = performance.now() / 1000;
+    const apply = (k: StatusKind, dur: number, data?: any) => {
+      if (!this.hasStatusOnActive(k)) return;
+      const ex = e.statuses!.find(s => s.kind === k);
+      if (ex) { ex.until = now + dur; if (data) ex.data = data; }
+      else e.statuses!.push({ kind: k, until: now + dur, data });
+    };
+    apply("fire", 5, { dps: 10 });
+    apply("enfeeble", 5);
+    apply("freeze", 3);
+    apply("slow", 5);
+    if (this.hasStatusOnActive("lightning")) {
+      let src = e; const chained: Enemy[] = [];
+      for (let i = 0; i < 4; i++) {
+        const next = this.enemies.find(ee =>
+          ee !== src && ee !== e && !ee.dying && !chained.includes(ee) &&
+          Math.hypot(ee.x - src.x, ee.y - src.y) < 140);
+        if (!next) break;
+        chained.push(next);
+        next.hp -= 8; next.hurtFlash = 0.12;
+        for (let p = 0; p < 4; p++) this.particles.push({
+          x: src.x + (next.x - src.x) * (p/4),
+          y: src.y + (next.y - src.y) * (p/4),
+          vx: 0, vy: 0, life: 0.18, max: 0.18, color: "#7be0ff", size: 2,
+        });
+        src = next;
+      }
+    }
+  }
+  private tickStatuses(dt: number) {
+    const now = performance.now() / 1000;
+    for (const e of this.enemies) {
+      if (!e.statuses || e.dying) continue;
+      e.statuses = e.statuses.filter(s => s.until > now);
+      for (const s of e.statuses) {
+        if (s.kind === "fire") {
+          e.hp -= (s.data?.dps ?? 10) * dt;
+          e.hurtFlash = Math.max(e.hurtFlash, 0.05);
+        }
+      }
+    }
+  }
+  private statusSpeedMul(e: Enemy): number {
+    if (!e.statuses) return 1;
+    const now = performance.now() / 1000;
+    let mul = 1;
+    for (const s of e.statuses) {
+      if (s.until <= now) continue;
+      if (s.kind === "freeze") return 0;
+      if (s.kind === "slow") mul *= 0.5;
+    }
+    return mul;
+  }
+  private statusAttackMul(e: Enemy): number {
+    if (!e.statuses) return 1;
+    const now = performance.now() / 1000;
+    for (const s of e.statuses) {
+      if (s.until > now && s.kind === "enfeeble") return 0.2;
+    }
+    return 1;
   }
 
   private dropLoot(e: Enemy) {
     const heavy = e.type === "brute" || e.type === "bruteHeavy" || e.type === "shooterElite";
-    const coinChance = heavy ? 0.7 : 0.35;
+    const coinChance = heavy ? 0.55 : 0.25; // -25% per Wave 9 rebalance
     if (Math.random() < coinChance) {
       const v = heavy ? randi(120, 480) : randi(50, 100);
       this.pickups.push({ x: e.x, y: e.y, vy: -260, type: "coin", value: v, life: 12 });
     }
-    if (Math.random() < 0.07) this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
-    if (Math.random() < 0.03) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 10), life: 12 });
+    if (Math.random() < 0.035) this.pickups.push({ x: e.x + 8, y: e.y, vy: -240, type: "token", value: randi(30, 45), life: 12 });
+    if (Math.random() < 0.015) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 5), life: 12 });
   }
 
   private explode(x: number, y: number, dmg: number, radius: number) {
