@@ -6,7 +6,7 @@ import { ALL_ACTIONS, ACTION_LABEL, getKeybinds, prettyKey, onKeybindsChange, Ga
 export const PauseOverlay = ({ game }: { game: Game }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [kb, setKb] = useState({ ...getKeybinds() });
-  useEffect(() => onKeybindsChange((next) => setKb({ ...next })), []);
+  useEffect(() => { const off = onKeybindsChange((next) => setKb({ ...next })); return () => { off(); }; }, []);
   return (
     <div className="absolute inset-0 flex items-center justify-center pixel-text p-4">
       <div className="bg-[#0a0e1f]/95 border-2 border-[#ffd84a] p-5 text-center w-[min(92vw,560px)] max-h-[90vh] flex flex-col">
