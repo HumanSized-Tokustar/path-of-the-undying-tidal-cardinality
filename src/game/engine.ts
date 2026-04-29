@@ -979,9 +979,9 @@ export class Game {
 
     this.updatePlatforms(dt);
     this.updateEnemies(dt);
+    this.tickStatuses(dt);
 
     // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
-    // Every 5th tier increase shouts "THE TIDE IS RISING".
     {
       const newTier = Math.floor(meters / 111);
       if (newTier > this.spawnTier) {
@@ -998,11 +998,14 @@ export class Game {
         }
       }
       this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
+      // No spawning while in arena (only the boss exists) or while standing in safe zone.
+      const canSpawn = !this.arenaMode && !this.inSafeZone;
+      if (canSpawn && this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
         this.spawnEnemy();
         this.enemiesSpawned++;
-        // Pace: faster rate as the tier grows. Start gentle ~0.5/s, ramp linearly.
-        const rate = 0.5 + 0.35 * this.spawnTier;
+        // Faster pace as player moves faster, so density doesn't lag.
+        const speedBonus = 1 + Math.min(2, Math.abs(this.pvx) / (40 * PX_PER_METER));
+        const rate = (0.5 + 0.35 * this.spawnTier) * speedBonus;
         const interval = 1 / Math.max(0.2, rate);
         this.spawnTimer = interval * rand(0.85, 1.15);
         if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
