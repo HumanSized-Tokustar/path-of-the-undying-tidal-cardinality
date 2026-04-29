@@ -1,44 +1,26 @@
 ===============================================================
- SOUND GUIDE — which audio file plays when
+ SOUND GUIDE — Wave 10 Boss-Free
 ===============================================================
-Drop .wav (preferred) or .ogg files into:
-    python_recreation/assets/sfx/
-Missing files fall back to short procedural beeps.
+Drop .wav or .ogg files into python_recreation/assets/sfx/.
+Missing files use procedural beeps.
 
-FILENAME              TRIGGERED WHEN
----------------------------------------------------------------
-shoot.wav             Player fires any ranged weapon
-hit.wav               Enemy takes damage
-jump.wav              Player jumps (also 2nd jump)
-dash.wav              Q pressed, dash consumed
-roll.wav              Z pressed, roll consumed
-parry.wav             E pressed during a successful parry window
-throw.wav             O/P released (misc thrown)
-explode.wav           Grenade / molotov / Rex-Splode detonates
-death.wav             Normal enemy dies
-boss_death.wav        *** A BOSS dies — use the Tower Battles
-                       Void death clip the user uploaded
-                       (Roblox_tower_battles_void_s_death_sound.mp3
-                        -> rename to boss_death.wav) ***
-boss_spawn.wav        A boss enters the arena (horn/siren)
-purchase.wav          Buy something in any shop
-coin.wav              Coin pickup
-token.wav             Token pickup (rare)
-crystal.wav           Crystal pickup (very rare)
-heal.wav              Medkit used
-shield_on.wav         X pressed, shield activates
-shield_break.wav      Shield expires or is broken
-overdrive.wav         G pressed
-slam.wav              Player ground-slams (S in air)
-player_hurt.wav       Player takes damage
-player_death.wav      Player loses a life
-game_over.wav         Last life lost
+shoot.wav          Player or ally fires
+hit.wav            Enemy takes damage
+jump.wav           Player/enemy jumps
+dash.wav           Dash used
+roll.wav           Roll used
+parry.wav          Successful parry
+throw.wav          Misc thrown/deployed
+explode.wav        Rocket, grenade, napalm, orbital, stomp blast
+purchase.wav       Any shop purchase / Apple Pay style sound
+coin.wav           Coin pickup
+token.wav          Token pickup
+crystal.wav        Crystal pickup
+heal.wav           Medkit used
+shield_on.wav      Shield or Disposable Shield activates
+overdrive.wav      Overdrive starts
+player_hurt.wav    Player takes damage
+player_death.wav   Life lost
+game_over.wav      Final death
 
-MUSIC
-    python_recreation/assets/music/
-Drop any .ogg or .wav file. First file found is looped. Add
-more to swap tracks at runtime (see game.py::cycle_music()).
-
-FONT (optional)
-    python_recreation/assets/fonts/pixel.ttf
-If present, overrides the default pygame font.
+audio removed: boss_spawn.wav and boss_death.wav are no longer used because bosses were removed.

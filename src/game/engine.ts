@@ -1,8 +1,8 @@
 import { audio } from "./audio";
 import { WEAPONS, WeaponId, STARTING_OWNED, STARTING_RANGED, STARTING_MELEE, STARTING_MISC_A, STARTING_MISC_B } from "./weapons";
+import { MAIN_SHOP, ALLIES, AUGMENT_SHOP, AllyDef } from "./shops";
 import { PLATFORM_VARIANTS, PlatformKind, pickPlatformKind } from "./platforms";
-import { actionFor as kbActionFor, normalizeKey as kbNormalize } from "./keybinds";
-import { bossForMilestone, BOSS_SPAWN_INTERVAL_METERS } from "./bosses";
+import { actionFor as kbActionFor, normalizeKey as kbNormalize, onKeybindsChange } from "./keybinds";
 
 // ============================================================
 // PATH OF THE UNDYING TIDAL CARDINALITY — Wave 4 Engine
@@ -45,7 +45,8 @@ type EnemyType =
   | "shooter" | "shooterElite"
   | "shanker" | "shankerSwift"
   | "brute"   | "bruteHeavy"
-  | "rider"   | "bomber" | "sniper";
+  | "rider"   | "bomber" | "sniper"
+  | "necromancer" | "minion" | "bron" | "giant" | "apache";
 
 const ENEMY_COLOR: Record<EnemyType, string> = {
   shooter:      "#e85d3a",
@@ -57,6 +58,11 @@ const ENEMY_COLOR: Record<EnemyType, string> = {
   rider:        "#3aa0e8",
   bomber:       "#888fa8",
   sniper:       "#ff3a6a",
+  necromancer:  "#050505",
+  minion:       "#3a3a44",
+  bron:         "#111111",
+  giant:        "#8b8f98",
+  apache:       "#5f6b77",
 };
 
 interface Input {
@@ -84,7 +90,7 @@ interface Bullet {
   x: number; y: number; vx: number; vy: number;
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
   color: string;
-  kind?: "normal" | "molotov";
+  kind?: "normal" | "napalm" | "oil" | "portal" | "disco";
 }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; gravity?: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
@@ -117,38 +123,35 @@ interface Enemy {
   legPhase: number;
   glintTimer: number;     // death glint
   dying: boolean;
-  // Wave 8 — boss extension
-  isBoss?: boolean;
-  bossId?: string;
-  bossName?: string;
-  shield?: number;
-  maxShield?: number;
-  shieldRegens?: number;  // remaining regens left
-  bossColor?: string;
-  bossAccent?: string;
-  bossEye?: string;
-  bossAbilities?: string[];
-  bossDropWeapon?: WeaponId | null;
-  bossDropAlly?: string | null;
-  // Wave 9 — status effects applied by augmented weapons
   statuses?: { kind: StatusKind; until: number; data?: any }[];
+  dashCd?: number;
+  jumpsLeft?: number;
+  summonCd?: number;
 }
 
 export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
 
 export const STATUS_AUGMENTS: { id: StatusKind; name: string; cost: number; desc: string }[] = [
-  { id: "fire",      name: "FIRE",      cost: 20,  desc: "10 dmg/s for 5s." },
-  { id: "lightning", name: "LIGHTNING", cost: 60,  desc: "Chain to 5 enemies." },
-  { id: "enfeeble",  name: "ENFEEBLE",  cost: 76,  desc: "Enemy attack -80% / 5s." },
-  { id: "freeze",    name: "FREEZE",    cost: 100, desc: "Stop enemy 3s." },
-  { id: "slow",      name: "SLOW",      cost: 70,  desc: "Enemy speed -50% / 5s." },
-  { id: "ultracrit", name: "ULTRACRIT", cost: 90,  desc: "1% chance ×4 dmg." },
+  { id: "fire",      name: "FIRE",      cost: 10,  desc: "20 dmg/s for 5s." },
+  { id: "lightning", name: "LIGHTNING CHAIN", cost: 76,  desc: "Hit 5 targets at once." },
+  { id: "enfeeble",  name: "ENFEEBLE",  cost: 100, desc: "Enemy attack -67% / 6s." },
+  { id: "freeze",    name: "FREEZE",    cost: 105, desc: "Stop enemy 3s." },
+  { id: "slow",      name: "SLOW",      cost: 90,  desc: "Enemy speed -67% / 5s." },
+  { id: "ultracrit", name: "ULTRACRIT", cost: 125, desc: "1% chance ×4 dmg with RED GLINT." },
 ];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const randi = (a: number, b: number) => Math.floor(rand(a, b + 1));
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+
+interface FriendlyAlly {
+  def: AllyDef; x: number; y: number; vx: number; vy: number; hp: number; life: number; fireCd: number; specialCd: number; facing: 1 | -1;
+}
+interface FieldHazard {
+  kind: "oil" | "portalA" | "portalB" | "lightning" | "shield" | "disco" | "shockwave" | "ray";
+  x: number; y: number; life: number; cd?: number; pair?: FieldHazard; used?: WeakSet<object>;
+}
 
 export interface InventoryState {
   owned: WeaponId[];
@@ -260,9 +263,9 @@ export class Game {
   private warning: string | null = null;
   private warnTimer = 0;
   private description = "WASD MOVE • SPACE/W JUMP×2 (S+SPACE drop, W on ladder = climb) • Q DASH • Z ROLL • F FIRE • R MELEE • O/P THROW MISC • E PARRY • V GRAB (HOLD) • X SHIELD • G OVERDRIVE • 1-6 SLOTS • TAB INV • ESC PAUSE";
-  private spawnTier = 0;        // grows by 1 per 111m for the tide system
-  private spawnAllowance = 5;   // current allowed total spawned enemies (cap 100)
-  private tideMessageCount = 0; // every 5th tier triggers "THE TIDE IS RISING"
+  private spawnTier = 0;        // grows every 666m for Wave 10 tide system
+  private spawnAllowance = 5;   // enemies per 5-second wave
+  private tideMessageCount = 0; // every 5th tier triggers "(THE TIDE RISES)"
   private tideMsgTimer = 0;     // overlay timer for the tide banner
   private tideMsgText = "";
   private grabCharge = 0;       // seconds F is held to charge a throw (0..1.5)
@@ -283,22 +286,20 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"|"boss"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
-  // Wave 8 — boss milestone tracker
-  private nextBossMilestone = 1;    // 1 => 5555m, 2 => 11110m, ...
-  private bossActive: Enemy | null = null;
-  private arenaLeft = 0; private arenaRight = 0;
-  // Wave 9 — fixed-interval landmark milestones (in meters)
   private nextMainAt = 1234;
   private nextAllyAt = 1667;
   private nextShadyAt = 3333;
-  // Wave 9 — Boss arena teleport
-  private arenaMode = false;
-  private arenaSavedWorldX = 0; private arenaSavedPx = 0; private arenaSavedCamX = 0;
-  // Track defeated bosses for ally cap
-  private defeatedBossIds = new Set<string>();
+  private maxDashCharges = 2;
+  private maxHpBonusBought = 0;
+  private reviveBuys = 0;
+  private purchaseCounts: Record<string, number> = {};
+  private allies: FriendlyAlly[] = [];
+  private hazards: FieldHazard[] = [];
+  private portalPending: FieldHazard | null = null;
+  private offKeybinds?: () => void;
 
   private last = 0; private rafId = 0;
 
@@ -313,6 +314,7 @@ export class Game {
     this.onStatsChange = opts.onStatsChange;
     this.onPhaseChange = opts.onPhaseChange;
     this.attachInput();
+    this.offKeybinds = onKeybindsChange(() => this.clearInputState());
   }
 
   private makeInput(): Input {
@@ -378,7 +380,13 @@ export class Game {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("wheel", this.onWheel);
+    this.offKeybinds?.();
     cancelAnimationFrame(this.rafId);
+  }
+  private clearInputState() {
+    this.keys.clear();
+    this.input = this.makeInput();
+    (this as any).rollPressed = false;
   }
   private onWheel = (e: WheelEvent) => {
     if (this.phase !== "playing") return;
@@ -459,7 +467,7 @@ export class Game {
     this.pHp = this.pMaxHp; this.pInv = 0; this.pFacing = 1;
     this.lives = this.maxLives;
     this.slowFall = 0;
-    this.dashCharges = 2; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
+    this.maxDashCharges = 2; this.dashCharges = this.maxDashCharges; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
     this.rollCharges = 2; this.rollRecharge = 0;
     (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
@@ -473,7 +481,7 @@ export class Game {
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
     this.enemiesSpawned = 0;
-    this.spawnTier = 0; this.spawnAllowance = 5;
+    this.spawnTier = 0; this.spawnAllowance = this.difficulty === "son" ? 10 : 5;
     this.tideMessageCount = 0; this.tideMsgTimer = 0; this.tideMsgText = "";
     this.grabCharge = 0;
     this.warning = null; this.warnTimer = 0; this.screenShake = 0;
@@ -483,10 +491,8 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
-    this.nextBossMilestone = 1; this.bossActive = null; this.arenaLeft = 0; this.arenaRight = 0;
     this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
-    this.arenaMode = false; this.arenaSavedWorldX = 0; this.arenaSavedPx = 0; this.arenaSavedCamX = 0;
-    this.defeatedBossIds.clear();
+    this.maxHpBonusBought = 0; this.reviveBuys = 0; this.purchaseCounts = {}; this.allies = []; this.hazards = []; this.portalPending = null;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
     this.cycleTime = 0;
@@ -526,36 +532,43 @@ export class Game {
     this.onPhaseChange(this.phase);
   }
   buyMainItem(id: string) {
-    const { MAIN_SHOP } = require("./shops") as typeof import("./shops");
     const it = MAIN_SHOP.find(x => x.id === id); if (!it) return;
-    if (!this.spendCurrency(it.cost, it.currency)) return;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (it.limit && bought >= it.limit) { this.flashDescription("PURCHASE LIMIT REACHED"); return; }
+    if (it.weapon && it.limit === 1 && this.inventory.owned.includes(it.weapon)) { this.flashDescription("ALREADY OWNED"); return; }
+    if (!this.spendCurrency(it.cost, it.currency)) { this.flashDescription("NOT ENOUGH CURRENCY"); return; }
+    this.purchaseCounts[id] = bought + 1;
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
     if (it.grenades) this.miscAmmo += it.grenades;
+    if (it.weapon && it.limit && it.limit > 1) this.miscAmmo += 1;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
     audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
   }
   buyAlly(id: string) {
-    const { ALLIES } = require("./shops") as typeof import("./shops");
     const a = ALLIES.find(x => x.id === id); if (!a) return;
-    if (!this.spendCurrency(a.cost, a.currency)) return;
-    (this as any).allies = (this as any).allies || [];
-    (this as any).allies.push({ def: a, x: this.px - 40, y: this.py, hp: a.hp, fireCd: 0 });
+    if (!this.spendCurrency(a.cost, a.currency)) { this.flashDescription("NOT ENOUGH TOKENS"); return; }
+    this.allies.push({ def: a, x: this.px - 40, y: this.py, vx: 0, vy: 0, hp: a.hp, life: a.lifespan, fireCd: 0, specialCd: 20, facing: 1 });
     audio.play("applepay");
     this.flashDescription(`Recruited ${a.name}`);
     this.emitStats();
   }
   buyAugment(id: string) {
-    const { AUGMENT_SHOP } = require("./shops") as typeof import("./shops");
     const a = AUGMENT_SHOP.find(x => x.id === id); if (!a) return;
-    if (this.inventory.augments.includes(id)) return;
-    if (!this.spendCurrency(a.cost, a.currency)) return;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (a.limit && bought >= a.limit) { this.flashDescription("PURCHASE LIMIT REACHED"); return; }
+    if (!a.limit && this.inventory.augments.includes(id)) return;
+    if (!this.spendCurrency(a.cost, a.currency)) { this.flashDescription("NOT ENOUGH CRYSTALS"); return; }
+    this.purchaseCounts[id] = bought + 1;
     this.inventory.augments.push(id);
-    if (id === "aug_hp_s") { this.pMaxHp += 15; this.pHp += 15; }
-    if (id === "aug_dash") { (this as any).pMaxDashCharges = ((this as any).pMaxDashCharges || 2) + 1; }
+    if (a.stat === "ammo50") this.ammo += 50;
+    if (a.stat === "ammo150") this.ammo += 150;
+    if (a.stat === "maxhp" && this.maxHpBonusBought < 500) { const add = Math.min(50, 500 - this.maxHpBonusBought); this.maxHpBonusBought += add; this.pMaxHp += add; this.pHp += add; }
+    if (a.stat === "dash") { this.maxDashCharges += 1; this.dashCharges = Math.min(this.maxDashCharges, this.dashCharges + 1); }
+    if (a.stat === "revive" && this.reviveBuys < 2) { this.reviveBuys++; this.maxLives++; this.lives++; }
     audio.play("applepay");
     this.flashDescription(`Augment: ${a.name}`);
     this.emitStats();
@@ -673,28 +686,21 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Pacing — distance-based ONLY: base 15 m/s, +10 every 300m, cap 105
+    // Wave 10 movement: deliberately nerfed so the world and enemies keep up.
     const meters = this.worldX / PX_PER_METER;
-    const stepIncrements = Math.floor(meters / 300);
-    // Distance-based pace still scales difficulty/spawns internally but player walk speed is capped.
-    const paceMs = Math.min(105, 15 + stepIncrements * 10);
-    this.paceMult = paceMs / 15;
+    const stepIncrements = Math.floor(meters / 900);
+    const paceMs = Math.min(18, 8 + stepIncrements * 0.75);
+    this.paceMult = paceMs / 8;
 
-    // PLAYER MAX SPEED HARD CAP: 40 m/s (user cap — prevents out-running loaded world).
-    const PLAYER_MAX_MS = 40;
-    const baseMs = Math.min(PLAYER_MAX_MS, paceMs);
-
-    // Movement: convert m/s to px/s
-    let speed = baseMs * (PX_PER_METER / 3);
-    if (this.rolling) speed *= 1.6;
-    if (this.odActive) speed *= 1.25;
-    if (this.puSpeed > 0) speed *= 2;
+    let speed = paceMs * (PX_PER_METER / 3);
+    if (this.rolling) speed *= 1.18;
+    if (this.odActive) speed *= 1.08;
+    if (this.puSpeed > 0) speed *= 1.25;
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
-    // Final clamp so buffs can't blow past the cap in world-units.
-    const MAX_PX = PLAYER_MAX_MS * PX_PER_METER * 1.6; // allow roll/OD/powerup bonus up to 1.6×
-    speed = Math.min(speed, MAX_PX);
+    const PLAYER_MAX_MS = 22;
+    speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -709,30 +715,30 @@ export class Game {
 
     // Dash (Q) — with i-frames
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
-      this.dashTime = 0.28;
-      this.pInv = Math.max(this.pInv, 0.28);
+      this.dashTime = 0.18;
+      this.pInv = Math.max(this.pInv, 0.18);
       this.dashCharges--;
-      if (this.dashRecharge <= 0) this.dashRecharge = 2;
+      if (this.dashRecharge <= 0) this.dashRecharge = 2.6;
     }
     // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
     const rollPressed = (this as any).rollPressed as boolean;
     if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
       this.rolling = true;
-      this.rollTime = 0.56;
-      this.pInv = Math.max(this.pInv, 0.56);
+      this.rollTime = 0.38;
+      this.pInv = Math.max(this.pInv, 0.38);
       this.rollCharges--;
-      if (this.rollRecharge <= 0) this.rollRecharge = 4; // 2× dash recharge
+      if (this.rollRecharge <= 0) this.rollRecharge = 5;
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * 3.4;
+      this.pvx = this.pFacing * speed * 1.75;
       this.dashTime -= dt;
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
       this.rollTime -= dt;
-      this.pvx = this.pFacing * speed * 1.8;
+      this.pvx = this.pFacing * speed * 1.25;
       // Knock enemies in path away
       const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
       for (const e of this.enemies) {
@@ -750,16 +756,16 @@ export class Game {
     }
     if (this.dashRecharge > 0) {
       this.dashRecharge -= dt;
-      if (this.dashRecharge <= 0 && this.dashCharges < 2) {
+      if (this.dashRecharge <= 0 && this.dashCharges < this.maxDashCharges) {
         this.dashCharges++;
-        if (this.dashCharges < 2) this.dashRecharge = 2;
+        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = 2.6;
       }
     }
     if (this.rollRecharge > 0) {
       this.rollRecharge -= dt;
       if (this.rollRecharge <= 0 && this.rollCharges < 2) {
         this.rollCharges++;
-        if (this.rollCharges < 2) this.rollRecharge = 4;
+        if (this.rollCharges < 2) this.rollRecharge = 5;
       }
     }
 
@@ -862,12 +868,15 @@ export class Game {
         for (let p = 0; p < w.pellets; p++) {
           const ang = (Math.random() - 0.5) * w.spread + (this.weather === "windy" ? 0.04 : 0);
           const cs = Math.cos(ang), sn = Math.sin(ang);
-          this.bullets.push({
-            x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
-            vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
-            dmg: w.dmg * dmgMult, life: 0.9, friendly: true, r: w.id === "rocket" ? 7 : 4, pierce: w.pierce,
-            color: w.color,
-          });
+          if (w.id === "portalgun") this.placePortal(this.px + this.pFacing * 180, GROUND_Y - 24);
+          else {
+            this.bullets.push({
+              x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
+              vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
+              dmg: w.dmg * dmgMult, life: w.id === "sniper" ? 1.6 : 0.9, friendly: true, r: w.id === "rocket" ? 8 : w.id === "oiler" ? 6 : 4, pierce: w.pierce,
+              color: w.color, kind: w.id === "oiler" ? "oil" : "normal",
+            });
+          }
         }
         audio.play("fire");
         this.spawnPuff(this.px + (this.pFacing > 0 ? this.pw : 0), this.py + this.ph * 0.4, w.color);
@@ -879,10 +888,14 @@ export class Game {
       this.fireCdM = w.fireCd;
       this.meleeSwing = 1;
       const dmg = w.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
-      const reach = w.id === "katana" ? 80 : 60;
+      const reach = w.id === "yamato" ? 92 : w.id === "katana" ? 82 : w.id === "gauntlet" ? 58 : 60;
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
-            Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) this.damageEnemy(e, dmg);
+            Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
+          this.damageEnemy(e, dmg);
+          if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
+          if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
+        }
       });
       audio.play("slash");
     }
@@ -937,13 +950,17 @@ export class Game {
       if (this.weather === "windy" && !b.friendly) b.vx *= 0.998;
       b.x += b.vx * bdt; b.y += b.vy * bdt;
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
-      if (b.r >= 8 && b.y > GROUND_Y) { this.explode(b.x, b.y, b.dmg, 90); return false; }
+      if (b.r >= 8 && b.y > GROUND_Y) {
+        if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
+        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        return false;
+      }
       if (b.friendly) {
         for (const e of this.enemies) {
           if (e.dying) continue;
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
             this.damageEnemy(e, b.dmg);
-            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, 90); return false; }
+            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
             if (b.pierce > 0) { b.pierce--; } else return false;
           }
         }
@@ -984,36 +1001,31 @@ export class Game {
     this.updateEnemies(dt);
     this.tickStatuses(dt);
 
-    // === Tide spawn system: start with 5-enemy allowance, +5 per 111m, hard cap 100.
+    // === Wave 10 spawn system: base 5 enemies / 5s, +6 every 666m, SON doubles.
     {
-      const newTier = Math.floor(meters / 111);
+      const cap = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
+      const newTier = Math.min(cap, Math.floor(meters / 666));
       if (newTier > this.spawnTier) {
-        const tiersGained = newTier - this.spawnTier;
-        this.spawnTier = newTier;
-        this.spawnAllowance = Math.min(100, this.spawnAllowance + 5 * tiersGained);
-        for (let i = 0; i < tiersGained; i++) {
+        for (let i = this.spawnTier + 1; i <= newTier; i++) {
           this.tideMessageCount++;
           if (this.tideMessageCount % 5 === 0) {
-            this.tideMsgText = "THE TIDE IS RISING";
+            this.tideMsgText = "(THE TIDE RISES)";
             this.tideMsgTimer = 3.5;
             this.screenShake = Math.max(this.screenShake, 8);
           }
         }
+        this.spawnTier = newTier;
       }
-      this.spawnTimer -= dt;
-      // No spawning while in arena (only the boss exists) or while standing in safe zone.
-      const canSpawn = !this.arenaMode && !this.inSafeZone;
-      if (canSpawn && this.spawnTimer <= 0 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
-        this.spawnEnemy();
-        this.enemiesSpawned++;
-        // Faster pace as player moves faster, so density doesn't lag.
-        const speedBonus = 1 + Math.min(2, Math.abs(this.pvx) / (40 * PX_PER_METER));
-        const rate = (0.5 + 0.35 * this.spawnTier) * speedBonus;
-        const interval = 1 / Math.max(0.2, rate);
-        this.spawnTimer = interval * rand(0.85, 1.15);
-        if (this.difficulty === "son" && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
-          this.spawnEnemy(); this.enemiesSpawned++;
-        }
+      this.spawnAllowance = (5 + this.spawnTier * 6) * (this.difficulty === "son" ? 2 : 1);
+      this.spawnTimer -= dt * (1 + Math.min(2.5, Math.max(0, this.pvx) / Math.max(1, speed)));
+      const canSpawn = !this.inSafeZone;
+      if (canSpawn && this.spawnTimer <= 0) {
+        const target = Math.min(90, this.spawnAllowance);
+        const current = this.enemies.filter(e => !e.dying).length;
+        const burst = Math.max(1, Math.min(target - current, Math.ceil(target / 5)));
+        for (let i = 0; i < burst; i++) this.spawnEnemy();
+        this.enemiesSpawned += Math.max(0, burst);
+        this.spawnTimer = 1.0;
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
@@ -1056,7 +1068,7 @@ export class Game {
 
     // Landmarks — fixed-interval milestones (Wave 9)
     const metersNow = this.worldX / PX_PER_METER;
-    if (!this.arenaMode) {
+    {
       // Main + Augment together every 1234m
       while (metersNow + 60 >= this.nextMainAt) {
         const lx = this.nextMainAt * PX_PER_METER;
@@ -1082,20 +1094,18 @@ export class Game {
     const SAFE_RADIUS = 9 * PX_PER_METER;
     const pCx = this.px + this.pw/2;
     this.inSafeZone = this.landmarks.some(l => {
-      if (l.kind === "boss") return false;
       const cx = l.x + l.w/2;
       return Math.abs(pCx - cx) < SAFE_RADIUS;
     });
 
     // Weather (excluding day/night which is independent)
     this.weatherSwitch -= dt;
-    if (this.weatherSwitch <= 0 && !this.arenaMode) {
+    if (this.weatherSwitch <= 0) {
       const opts: any[] = ["clear","clear","rain","snow","storm","fog","windy"];
       this.weather = opts[Math.floor(Math.random() * opts.length)];
       this.weatherSwitch = rand(45, 90);
       this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
     }
-    if (this.arenaMode) this.weather = "clear";
     if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
       for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
     }
@@ -1121,30 +1131,19 @@ export class Game {
     }
 
     this.warnTimer -= dt;
-    // Boss milestone — every 5555m. Teleport into separate arena.
-    const metersNowBoss = this.worldX / PX_PER_METER;
-    if (!this.arenaMode && !this.bossActive && metersNowBoss >= this.nextBossMilestone * 5555 - 5) {
-      this.enterBossArena(this.nextBossMilestone);
-      this.nextBossMilestone++;
-    }
-    // Arena wall clamp while boss is alive
-    if (this.arenaMode && this.bossActive && !this.bossActive.dying) {
-      if (this.px < this.arenaLeft) this.px = this.arenaLeft;
-      if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
-    }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
       const m = Math.floor(metersNow);
       const toMain  = Math.max(0, this.nextMainAt - m);
       const toAlly  = Math.max(0, this.nextAllyAt - m);
-      const toBoss  = Math.max(0, this.nextBossMilestone * 5555 - m);
-      if (this.arenaMode && this.bossActive) this.warning = `ARENA — ${this.bossActive.bossName}`;
-      else if (toBoss < 100) this.warning = `BOSS ARENA APPROACHING — ${toBoss}m`;
-      else if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
+      if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
       else if (toAlly < 80)  this.warning = `Ally shop — ${toAlly}m`;
       else if (this.inSafeZone) this.warning = `SAFE ZONE — press T to enter shop`;
       else this.warning = null;
     }
+
+    this.updateAllies(dt);
+    this.updateHazards(dt);
 
     if (this.screenShake > 0) this.screenShake -= dt * 30;
     if (this.pHp <= 0) this.die();
@@ -1167,8 +1166,24 @@ export class Game {
       if (this.miscAmmo <= 0) { this.flashDescription("OUT OF MISC"); return; }
       (this as any)[cdRef] = w.fireCd;
       this.miscAmmo = Math.max(0, this.miscAmmo - 1);
-      if (w.id === "medkit") this.useMedkit(); // direct heal
-      else if (w.id === "smoke") {
+      if (w.id === "medkit") this.useMedkit();
+      else if (w.id === "shockwave") {
+        this.hazards.push({ kind:"shockwave", x:this.px + this.pFacing * 35, y:GROUND_Y, life:0.45 });
+        this.pvx += this.pFacing * 360; this.pvy = -380;
+        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 180) { e.vx += this.pFacing * 420; e.vy = -420; }
+        this.flashDescription("SHOCKWAVE — everything leaps forward");
+      } else if (w.id === "lightning_rod") {
+        this.hazards.push({ kind:"lightning", x:this.px + this.pFacing * 45, y:GROUND_Y, life:10, cd:0 });
+        this.flashDescription("LIGHTNING ROD PLACED");
+      } else if (w.id === "disposable_shield") {
+        this.hazards.push({ kind:"shield", x:this.px + this.pFacing * 52, y:GROUND_Y - 55, life:10 });
+        this.flashDescription("DISPOSABLE SHIELD — 10s barrier");
+      } else if (w.id === "obliterator_ray") {
+        this.hazards.push({ kind:"ray", x:this.px + this.pw/2, y:this.py + this.ph*0.4, life:0.25 });
+        for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
+        this.flashDescription("OBLITERATOR RAY ∞");
+      }
+      else if ((w.id as any) === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
         const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
         this.parryFlash = Math.max(this.parryFlash, 0.4);
@@ -1177,10 +1192,8 @@ export class Game {
           if (e.dying || e.thrown) continue;
           const d = Math.hypot(e.x - cx, e.y - cy);
           if (d < 360) {
-            // Bosses get reduced stun
-            const isBoss = (e as any).boss === true || e.maxHp > 400;
-            e.disabled = Math.max(e.disabled, isBoss ? 0.8 : 2.5);
-            e.fireCd = Math.max(e.fireCd, isBoss ? 0.6 : 2.0);
+            e.disabled = Math.max(e.disabled, 2.5);
+            e.fireCd = Math.max(e.fireCd, 2.0);
           }
         }
         // Particle burst
@@ -1212,7 +1225,7 @@ export class Game {
         vx: this.pFacing * v, vy: -380 - charge * 120,
         dmg: (w.dmg || 1) * dmgMult, life: 2.4, friendly: true, r: 8, pierce: 99,
         color: w.color,
-        kind: w.id === "molotov" ? "molotov" : "normal",
+        kind: w.id === "napalm" ? "napalm" : w.id === "disco_bomb" ? "disco" : "normal",
       });
       this.miscAmmo = Math.max(0, this.miscAmmo - 1);
       audio.play("miscthrow");
@@ -1307,7 +1320,7 @@ export class Game {
       this.flashDescription(`THROW ENEMY — ${Math.round(charge * 100)}% charge`);
       audio.play("miscthrow");
     } else {
-      // Find nearest non-boss enemy in range
+      // Find nearest enemy in range
       let best: Enemy | null = null; let bestD = 70;
       for (const e of this.enemies) {
         if (e.dying || e.thrown) continue;
@@ -1441,72 +1454,6 @@ export class Game {
     void prevBottomDummy;
   }
 
-  private enterBossArena(milestone: number) {
-    // Snapshot current world state so we can restore on victory.
-    this.arenaSavedWorldX = this.worldX;
-    this.arenaSavedPx = this.px;
-    this.arenaSavedCamX = this.camX;
-    // Wipe live entities for a clean stadium.
-    this.enemies = [];
-    this.bullets = [];
-    this.pickups = [];
-    this.worldPickups = [];
-    this.landmarks = this.landmarks.filter(l => l.kind === "boss" ? false : false); // clear all
-    this.arenaMode = true;
-    // Place player center-left of the arena.
-    this.px = 200;
-    this.camX = 0;
-    this.spawnBoss(milestone);
-    this.flashDescription("BOSS ARENA — defeat the boss to escape!");
-  }
-  private exitBossArena() {
-    this.arenaMode = false;
-    this.bossActive = null;
-    this.arenaLeft = 0; this.arenaRight = 0;
-    // Restore world position so the run continues from where the player was teleported.
-    this.worldX = this.arenaSavedWorldX;
-    this.px = this.arenaSavedPx;
-    this.camX = this.arenaSavedCamX;
-    this.enemies = [];
-    this.flashDescription("ARENA CLEARED — back to the run.");
-  }
-  private spawnBoss(milestone: number) {
-    const def = bossForMilestone(milestone);
-    const hpMul = this.diffEnemyHp();
-    // In arena mode spawn dead-center; otherwise spawn ahead of camera (legacy fallback).
-    const spawnX = this.arenaMode ? (this.camX + W * 0.65) : (this.camX + W * 0.6);
-    const spawnY = GROUND_Y - def.h;
-    const boss: Enemy = {
-      type: "brute" as EnemyType,
-      x: spawnX, y: spawnY, vx: 0, vy: 0,
-      w: def.w, h: def.h, hp: def.hp * hpMul, maxHp: def.hp * hpMul,
-      onGround: true, facing: -1,
-      fireCd: 1.5, aiTimer: 0, targetDx: 0, hurtFlash: 0,
-      burstLeft: 0, burstCd: 0, chargeTime: 0, charging: false,
-      flying: false, baseY: spawnY,
-      jumpCd: 0, disabled: 0, grabbed: false,
-      thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false,
-      isBoss: true, bossId: def.id, bossName: def.name,
-      shield: def.shield, maxShield: def.shield, shieldRegens: def.shieldRegens,
-      bossColor: def.color, bossAccent: def.accent, bossEye: def.eye,
-      bossAbilities: def.abilities,
-      bossDropWeapon: def.dropWeapon, bossDropAlly: def.dropAlly,
-      statuses: [],
-    };
-    this.enemies.push(boss);
-    this.bossActive = boss;
-    // Arena clamp uses the visible viewport.
-    this.arenaLeft = this.camX + 32;
-    this.arenaRight = this.camX + W - 32;
-    if (!this.arenaMode) this.landmarks.push({ x: spawnX - 120, kind: "boss", w: 240 });
-    audio.play("boss");
-    this.flashDescription(def.flavor);
-    this.screenShake = Math.max(this.screenShake, 12);
-    this.warning = `BOSS: ${def.name} — ${def.abilities.join(" • ")}`;
-    this.warnTimer = 5;
-  }
-
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
     const spawnX = this.camX + W + rand(40, 200);
@@ -1516,6 +1463,8 @@ export class Game {
     if (meters > 400) pool.push("shankerSwift", "shooterElite");
     if (meters > 700) pool.push("rider");
     if (meters > 1000) pool.push("bomber", "sniper", "bruteHeavy");
+    if (this.difficulty === "alright" && meters > 2000) pool.push("necromancer");
+    if (this.difficulty === "son" && meters > 1700) pool.push("bron", "giant", "apache");
     const type = pick(pool);
 
     const stats: Record<EnemyType, { hp: number; w: number; h: number }> = {
@@ -1528,9 +1477,14 @@ export class Game {
       rider:        { hp: 140, w: 44, h: 30 },
       bomber:       { hp: 90,  w: 50, h: 24 },
       sniper:       { hp: 130, w: 24, h: 40 },
+      necromancer:  { hp: 200, w: 28, h: 42 },
+      minion:       { hp: 30,  w: 20, h: 28 },
+      bron:         { hp: 300, w: 30, h: 42 },
+      giant:        { hp: 777, w: 70, h: 88 },
+      apache:       { hp: 500, w: 76, h: 30 },
     };
     const base = stats[type];
-    const flying = type === "bomber" || type === "rider";
+    const flying = type === "bomber" || type === "rider" || type === "apache";
     const baseY = flying ? randi(120, 240) : GROUND_Y - base.h;
     const hpMul = this.diffEnemyHp();
 
@@ -1543,7 +1497,7 @@ export class Game {
       flying, baseY,
       jumpCd: 0, disabled: 0, grabbed: false,
       thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false, statuses: [],
+      legPhase: 0, glintTimer: 0, dying: false, statuses: [], dashCd: rand(1, 2), jumpsLeft: 2, summonCd: 3,
     });
     if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
@@ -1551,8 +1505,13 @@ export class Game {
     }
   }
 
+  private spawnMinion(x: number) {
+    const hpMul = this.diffEnemyHp();
+    this.enemies.push({ type:"minion", x, y:GROUND_Y-28, vx:0, vy:0, w:20, h:28, hp:30*hpMul, maxHp:30*hpMul, onGround:true, facing:-1, fireCd:1, aiTimer:0, targetDx:0, hurtFlash:0, burstLeft:0, burstCd:0, chargeTime:0, charging:false, flying:false, baseY:GROUND_Y-28, jumpCd:0, disabled:0, grabbed:false, thrown:false, throwVx:0, throwVy:0, legPhase:0, glintTimer:0, dying:false, statuses:[], dashCd:1, jumpsLeft:2, summonCd:0 });
+  }
+
   private updateEnemies(dtRaw: number) {
-    // CHRONO SLOW: enemies experience 50% time (bosses 75% — none yet, so flat 0.5)
+    // CHRONO SLOW: enemies experience 50% time
     const slow = this.puChrono > 0 ? 0.5 : 1;
     const dt = dtRaw * slow;
     this.enemies = this.enemies.filter(e => {
@@ -1562,8 +1521,7 @@ export class Game {
 
       // Safe-zone gate: enemies near a shop landmark center freeze + don't fire.
       const SAFE_RADIUS = 9 * PX_PER_METER;
-      const inSafe = !e.isBoss && this.landmarks.some(l => l.kind !== "boss" &&
-        Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
+      const inSafe = this.landmarks.some(l => Math.abs(e.x - (l.x + l.w/2)) < SAFE_RADIUS);
 
       // Status freeze
       const speedMul = this.statusSpeedMul(e);
@@ -1680,6 +1638,29 @@ export class Game {
               });
             }
             break;
+          case "necromancer":
+            e.vx = dist > 260 ? Math.sign(dx) * 55 : -Math.sign(dx) * 70;
+            e.summonCd = (e.summonCd ?? 3) - dt;
+            if (e.summonCd <= 0) { e.summonCd = 5; this.spawnMinion(e.x - e.facing * 25); }
+            break;
+          case "minion":
+            e.vx = Math.sign(dx) * 170;
+            break;
+          case "bron":
+            e.vx = dist > 240 ? Math.sign(dx) * 95 : 0;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 560) { e.fireCd = 1.25 * fireMul; this.bullets.push({ x:e.x, y:e.y+18, vx:e.facing*520, vy:-40, dmg:50, life:2, friendly:false, r:12, pierce:0, color:"#f97316" }); }
+            break;
+          case "giant":
+            e.vx = Math.sign(dx) * 38;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 160) { e.fireCd = 2.2 * fireMul; this.screenShake = Math.max(this.screenShake, 12); this.damagePlayer(70 * this.diffEnemyDmg()); }
+            break;
+          case "apache":
+            e.vx = -120; e.y = e.baseY + Math.sin(this.timeAlive * 2) * 18;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 700) { e.fireCd = 0.75 * fireMul; this.spawnEnemyBullet(e, 560, Math.random() < 0.25 ? 35 : 12, Math.random() < 0.25 ? 80 : 0); }
+            break;
           case "sniper":
             e.vx = (Math.random() < 0.01) ? Math.sign(dx) * 80 : 0;
             if (!e.charging && dist < 700) {
@@ -1767,10 +1748,13 @@ export class Game {
             }
           }
         }
-        // Occasional jump toward player platform
-        if (e.onGround && e.jumpCd <= 0 && Math.random() < 0.008 * espd) {
-          e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
+        // All enemies can double-jump and short dash.
+        if (e.onGround) e.jumpsLeft = 2;
+        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < 0.012 * espd || Math.abs(dyToPlayer) > 60)) {
+          e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
         }
+        e.dashCd = (e.dashCd ?? 1.5) - dt;
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260; e.dashCd = rand(1.8, 3.2); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
@@ -1779,8 +1763,10 @@ export class Game {
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching && !e.thrown) {
         const m = this.diffEnemyDmg() * this.statusAttackMul(e);
-        if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
+        if (e.type === "minion") this.damagePlayer(20 * m);
+        else if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
         else if (e.type === "rider") this.damagePlayer(15 * m);
+        else if (e.type === "giant") this.damagePlayer(30 * m);
         else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12 * m);
       }
 
@@ -1789,32 +1775,7 @@ export class Game {
         e.glintTimer = 0.4;
         this.kills++;
         this.comboCount++; this.comboTimer = 3;
-        if (e.isBoss) {
-          audio.play("bossDeath");
-          this.bossKills++;
-          if (e.bossId) this.defeatedBossIds.add(e.bossId);
-          if (this.bossActive === e) { this.bossActive = null; }
-          // Boss loot bundle
-          this.coins += randi(50, 150);
-          this.crystals += randi(1, 3);
-          this.tokens += randi(1, 2);
-          this.pHp = Math.min(this.pMaxHp, this.pHp + 60);
-          if (e.bossDropWeapon && !this.inventory.owned.includes(e.bossDropWeapon)) {
-            this.inventory.owned.push(e.bossDropWeapon);
-            this.flashDescription(`BOSS DROP — ${WEAPONS[e.bossDropWeapon].name.toUpperCase()} ACQUIRED!`);
-          } else if (e.bossDropAlly) {
-            this.flashDescription(`BOSS DROP — ALLY "${e.bossDropAlly.toUpperCase()}" JOINS YOU!`);
-          }
-          for (let i = 0; i < 40; i++) this.particles.push({
-            x: e.x, y: e.y + e.h/2, vx: rand(-500, 500), vy: rand(-500, -80),
-            life: 1.2, max: 1.2, color: i % 3 === 0 ? "#ffd84a" : i % 3 === 1 ? "#ff3a3a" : "#d97bff", size: 4,
-          });
-          this.screenShake = Math.max(this.screenShake, 20);
-          // Schedule arena exit shortly after death glint.
-          if (this.arenaMode) setTimeout(() => this.exitBossArena(), 1200);
-        } else {
-          audio.play("kill");
-        }
+        audio.play("kill");
         this.dropLoot(e);
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({
@@ -1825,6 +1786,91 @@ export class Game {
       return e.hp > 0 || e.dying;
     });
     if (this.grabbed && (!this.enemies.includes(this.grabbed) || this.grabbed.dying)) this.grabbed = null;
+  }
+
+
+  private addStatus(e: Enemy, kind: StatusKind, dur: number, data?: any) {
+    if (!e.statuses) e.statuses = [];
+    const now = performance.now() / 1000;
+    const ex = e.statuses.find(s => s.kind === kind);
+    if (ex) { ex.until = now + dur; ex.data = data ?? ex.data; }
+    else e.statuses.push({ kind, until: now + dur, data });
+  }
+
+  private placePortal(x: number, y: number) {
+    const portal: FieldHazard = { kind: this.portalPending ? "portalB" : "portalA", x, y, life: 3, used: new WeakSet<object>() };
+    if (this.portalPending) {
+      portal.pair = this.portalPending;
+      this.portalPending.pair = portal;
+      this.hazards.push(portal);
+      this.portalPending = null;
+      this.flashDescription("PORTAL B LINKED — 3s");
+    } else {
+      this.portalPending = portal;
+      this.hazards.push(portal);
+      this.flashDescription("PORTAL A SET — fire again for B");
+    }
+  }
+
+  private updateHazards(dt: number) {
+    for (const h of this.hazards) {
+      h.life -= dt;
+      h.cd = Math.max(0, (h.cd ?? 0) - dt);
+      if (h.kind === "oil") {
+        for (const e of this.enemies) if (!e.dying && Math.abs(e.x - h.x) < 90 && Math.abs(e.y + e.h - GROUND_Y) < 20) { e.vx *= 1.04; e.hurtFlash = Math.max(e.hurtFlash, 0.05); (e as any).vulnerable = 1; }
+      }
+      if (h.kind === "lightning" && (h.cd ?? 0) <= 0) {
+        h.cd = 0.89;
+        const rods = this.hazards.filter(r => r.kind === "lightning" && r !== h && Math.abs(r.x - h.x) < 260);
+        const chain = [h, ...rods].slice(0, 5);
+        for (const node of chain) {
+          const target = this.enemies.find(e => !e.dying && Math.hypot(e.x - node.x, e.y - node.y) < 150);
+          if (target) this.damageEnemy(target, 15);
+        }
+      }
+      if (h.kind === "disco") {
+        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 150) { e.disabled = Math.max(e.disabled, 6); e.vy = e.onGround ? -260 : e.vy; }
+      }
+      if ((h.kind === "portalA" || h.kind === "portalB") && h.pair) {
+        const tryTeleport = (obj: any) => {
+          if (h.used?.has(obj)) return;
+          if (Math.hypot((obj.x ?? this.px) - h.x, (obj.y ?? this.py) - h.y) < 28) {
+            obj.x = h.pair!.x + 36; obj.y = h.pair!.y - (obj.h ?? this.ph);
+            h.pair!.used?.add(obj);
+          }
+        };
+        if (Math.hypot(this.px - h.x, this.py - h.y) < 28) { this.px = h.pair!.x + 36; this.py = h.pair!.y - this.ph; }
+        for (const e of this.enemies) tryTeleport(e);
+      }
+    }
+    this.hazards = this.hazards.filter(h => h.life > 0);
+    if (this.portalPending && !this.hazards.includes(this.portalPending)) this.portalPending = null;
+  }
+
+  private updateAllies(dt: number) {
+    this.allies = this.allies.filter(a => {
+      a.life -= dt;
+      if (a.life <= 0 || a.hp <= 0) return false;
+      const target = this.enemies.find(e => !e.dying);
+      if (target) {
+        const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
+        a.vx = Math.sign(dx) * a.def.speed * 22;
+        a.fireCd -= dt; a.specialCd -= dt;
+        if (Math.abs(dx) < 520 && a.fireCd <= 0) {
+          a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
+          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg); }
+          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999);
+          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent });
+        }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120); }
+      } else {
+        const dx = (this.px - 45) - a.x; a.vx = Math.sign(dx) * Math.min(Math.abs(dx), a.def.speed * 18);
+      }
+      a.x += a.vx * dt;
+      a.vy += 1200 * dt; a.y += a.vy * dt;
+      if (a.y + a.def.h > GROUND_Y) { a.y = GROUND_Y - a.def.h; a.vy = 0; }
+      return true;
+    });
   }
 
   private spawnEnemyBullet(e: Enemy, speed: number, dmg: number, vyOffset = 0) {
@@ -2010,7 +2056,7 @@ export class Game {
       overdriveBar: this.odBar, overdriveActive: this.odActive, overdriveTime: Math.max(0, this.odTime),
       dashCharges: this.dashCharges, dashCdNext: Math.max(0, this.dashRecharge),
       rollCharges: this.rollCharges, rollCdNext: Math.max(0, this.rollRecharge),
-      kills: this.kills, bossKills: this.bossKills,
+      kills: this.kills, bossKills: 0,
       timeAlive: this.timeAlive,
       rank: rank.label, rankColor: rank.color,
       trackName: audio.currentTrackName(),
@@ -2029,13 +2075,13 @@ export class Game {
 
   computeRank(meters: number): { label: string; color: string } {
     const minutes = this.timeAlive / 60;
-    if (this.bossKills >= 20 || this.coins >= 1_000_000 || meters >= 1_000_000 || this.totalDmg >= 100_000_000 || minutes >= 60)
+    if (this.coins >= 1_000_000 || meters >= 1_000_000 || this.totalDmg >= 100_000_000 || minutes >= 60)
       return { label: "SON 😭👍", color: "rank-son" };
-    if (this.bossKills >= 10 || this.totalDmg >= 300_000 || minutes >= 45) return { label: "S", color: "text-[hsl(var(--rank-s))]" };
-    if (this.bossKills >= 5  || meters >= 500_000 || minutes >= 30) return { label: "A", color: "text-[hsl(var(--rank-a))]" };
-    if (this.bossKills >= 3  || minutes >= 20) return { label: "B", color: "text-[hsl(var(--rank-b))]" };
-    if (this.bossKills >= 2  || minutes >= 15) return { label: "C", color: "text-[hsl(var(--rank-c))]" };
-    if (this.bossKills >= 1  || minutes >= 10) return { label: "D", color: "text-[hsl(var(--rank-d))]" };
+    if (this.totalDmg >= 300_000 || minutes >= 45) return { label: "S", color: "text-[hsl(var(--rank-s))]" };
+    if (meters >= 500_000 || minutes >= 30) return { label: "A", color: "text-[hsl(var(--rank-a))]" };
+    if (minutes >= 20) return { label: "B", color: "text-[hsl(var(--rank-b))]" };
+    if (minutes >= 15) return { label: "C", color: "text-[hsl(var(--rank-c))]" };
+    if (minutes >= 10) return { label: "D", color: "text-[hsl(var(--rank-d))]" };
     return { label: "F", color: "text-[hsl(var(--rank-f))]" };
   }
 

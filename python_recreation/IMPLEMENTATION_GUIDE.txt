@@ -1,202 +1,53 @@
 ===============================================================
  PATH OF THE UNDYING TIDAL CARDINALITY
- Python / Pygame Recreation — Implementation Guide (Wave 8)
+ Python / Pygame Recreation — Wave 10 Boss-Free Guide
 ===============================================================
 
-This guide explains how to rebuild, customize, and extend the
-Pygame port so it mirrors the web version. Read top-to-bottom.
-
----------------------------------------------------------------
-1. FOLDER LAYOUT
----------------------------------------------------------------
+FOLDER LAYOUT
 python_recreation/
-  game.py                 Main runnable file. Run with: python game.py
-  keybinds.json           User-editable key map (auto-created on first run)
-  README.md               Controls + features summary
-  IMPLEMENTATION_GUIDE.txt (this file)
-  SPRITE_GUIDE.txt        Per-sprite filenames + visual descriptions
-  SOUND_GUIDE.txt         Per-sound filenames + when they trigger
+  game.py
+  keybinds.json
   assets/
-    sprites/
-      player/             player.png + idle/run/jump frames
-      enemies/            shooter.png, shanker.png, brute.png ...
-      bosses/             megger_knight.png, ahyah_omis.png, ...
-      items/              coin.png, medkit.png, crystal.png ...
-      allies/             gunner.png, medic.png, exiled.png ...
-    sfx/                  shoot.wav, hit.wav, jump.wav, boss_death.wav ...
-    music/                track1.ogg (first file found is looped)
-    fonts/                pixel.ttf (optional)
+    sprites/player/
+    sprites/enemies/        shooter, shanker, brute, necromancer, minion, bron, giant, apache
+    sprites/items/          all weapon, currency, status, misc item sprites
+    sprites/allies/         lil_one, sheriff_seriff, eradidog, stalien, dude_person
+    sprites/landmarks/      main_shop, upgrade_shop, ally_shop, shady
+    sfx/                    shoot, hit, jump, dash, roll, parry, throw, explode, purchase
+    music/                  looped tracks
 
-If `assets/` is missing, the game falls back to procedural pixel
-drawing and procedural beeps — no crash.
+CORE RULES
+- Remove all boss code. No boss arenas, boss drops, boss counters, or boss exceptions.
+- Default loadout: ranged pistol/smg/shotgun/rifle/sniper/rocket, melee knife, misc grenade + medkit.
+- Movement is intentionally nerfed: low base speed, weaker dash/roll bursts, hard speed cap near 22 m/s.
+- Keybinds load from keybinds.json and must be re-read/applied immediately after settings changes.
 
----------------------------------------------------------------
-2. REBINDABLE KEYS
----------------------------------------------------------------
-The file `keybinds.json` sits next to `game.py`. On first run the
-game writes a default copy. Edit it with any text editor:
+SPAWNING
+- Every 5 seconds spawn 5 enemies. SON doubles the amount.
+- Every 666m add +6 enemies per 5s wave.
+- Caps: DUNCE 7 increases, ALRIGHT 15, SON 40.
+- Every 5th increase display exactly: (THE TIDE RISES)
+- Scale spawn timer by current player velocity so sprinting never creates empty no-enemy stretches.
 
-{
-  "moveLeft": "a", "moveRight": "d", "moveUp": "w", "moveDown": "s",
-  "jump": "space", "dash": "q", "roll": "z", "parry": "e",
-  "fire": "f", "melee": "r", "miscA": "o", "miscB": "p", "grab": "v",
-  "shield": "x", "overdrive": "g",
-  "inventory": "tab", "pause": "escape",
-  "slot1": "1", "slot2": "2", "slot3": "3",
-  "slot4": "4", "slot5": "5", "slot6": "6"
-}
+ENEMIES
+- All enemies get double jump and short dash cooldown.
+- Necromancer: ALRIGHT only after 2000m, black wizard, 200 HP, summons Minions.
+- Minion: 30 HP, 20 touch damage.
+- THE BRON: SON only after 1700m, black basketball player, 300 HP, throws orange ball for 50.
+- GIANT: SON only after 1700m, very big gray humanoid, 777 HP, stomp 70.
+- APACHE: SON only after 1700m, helicopter, 500 HP, flies, bullets/rockets.
 
-Use pygame key-name strings (pygame.key.name(K_...)). To add an
-in-game Settings menu like the web build, create a new file
-`settings_menu.py`, import pygame, render a list of the 23 actions
-from keybinds.json, and on a click call
-`pygame.event.wait()` until a KEYDOWN, then write back to the JSON.
+SHOPS
+- Main Shop every 1234m, Upgrade Shop beside it, Ally Shop every 1667m, Shady every 3333m.
+- Safe zone: 9 meter radius around shop center blocks enemy spawning and enemy AI entry.
+- Main Shop uses coins. Ranged/melee buy once. Misc can be bought 10 times.
+- Upgrade Shop uses crystals: Fire 10, Lightning Chain 76, Enfeeble 100, Freeze 105, Slow 90, Ultracrit 125, plus Ammo +50/+150, Max HP +50 up to +500, Extra Dash once, Extra Revive twice.
+- Ally Shop uses tokens and spawns friendly timed AI exactly matching each ally description.
 
----------------------------------------------------------------
-3. RESPONSIVE WINDOW
----------------------------------------------------------------
-Initialize with:
-    screen = pygame.display.set_mode((960, 540), pygame.RESIZABLE)
-Listen for VIDEORESIZE events and pass the new (w,h) into a
-`scale = min(w/960, h/540)` factor that you multiply every
-blit/rect by. HUD draws last, in screen pixels, so it never clips.
-This fixes the "can't see the pause button" problem.
+WEAPON NOTES
+Sniper 4000, Rocket Launcher 5000, Oiler 1234, Portal Gun 8000, Flamethrower 2643, Gold Machine Gun 5555.
+Katana 450, Yamato 10000, Gauntlet 9000.
+Napalm 666, Shockwave 1500, Lightning Rod 3000, Disco Bomb 4000, Disposable Shield 3000, Obliterator Ray 9999999.
 
----------------------------------------------------------------
-4. THE 10-BOSS SYSTEM
----------------------------------------------------------------
-Spawn bosses at distance milestones (555, 1110, 1665, ...). Put the
-boss table into a separate file `bosses.py` to keep game.py small.
-
-bosses.py skeleton:
-    BOSSES = [
-      {"name": "MEGGER KNIGHT", "hp": 2500, "shield": 0, "speed": 7,
-       "sprite": "bosses/megger_knight.png",
-       "moves": ["slam", "charge_leap"],
-       "drop": "spiked_gauntlets"},
-      # ... 9 more entries from BOSS_CONCEPTS.pdf
-    ]
-
-Arena lock:
- - When a boss spawns, set `arena_left = boss.x - 600`,
-   `arena_right = boss.x + 600`.
- - Clamp the player inside these bounds.
- - Stop camera scroll and pause normal enemy spawns until
-   `boss.hp <= 0`.
- - On defeat: play `assets/sfx/boss_death.wav` (see SOUND_GUIDE),
-   drop the special weapon + a random bundle of loot (coins,
-   medkit, powerup, 1-3 crystals, 1-2 tokens), then release walls.
-
-Each boss is one Python class extending a base `Boss` with
-`update(dt, player)` and `draw(surface)`. Their moves are methods.
-
----------------------------------------------------------------
-5. SHOPS (MAIN / AUGMENT / ALLY / SHADY)
----------------------------------------------------------------
-Each shop is its own menu class. Create `shop_main.py`,
-`shop_augment.py`, `shop_ally.py`, `shop_shady.py`.
-
-Main shop pagination:
- - Store items in a list; show 8 per page.
- - Arrow keys move selection; ENTER buys.
- - A/D keys change page. Render "<- PREV" / "NEXT ->" at bottom.
-
-Ally shop horizontal scroll:
- - Render a single row of cards; mouse wheel or arrow keys
-   scroll the visible window by one card.
- - Show the focused ally's description in a right-hand panel
-   (HP, damage, behavior text).
- - Overflow hint: if more cards exist to the right, draw a
-   small "MORE >>" tag.
-
-Every shop item has its own 16x16 sprite — see SPRITE_GUIDE.txt
-for filenames. Currency rarity (Crystals ~1%, Tokens ~3%) is
-enforced in the pickup spawner, not the shop.
-
----------------------------------------------------------------
-6. ADDING SPRITES YOU DOWNLOADED OR DREW
----------------------------------------------------------------
-1. Drop the PNG into the matching folder (see SPRITE_GUIDE.txt).
-2. The filename MUST match the one the guide specifies.
-3. Recommended size: 16x16 for items, 32x32 for enemies, 64x64
-   for bosses. Use nearest-neighbor scaling:
-       img = pygame.image.load(path).convert_alpha()
-       img = pygame.transform.scale(img, (w*scale, h*scale))
-4. If a file is missing, `load_sprite()` returns None and the
-   game draws the procedural fallback.
-
----------------------------------------------------------------
-7. ADDING SOUND EFFECTS
----------------------------------------------------------------
-See SOUND_GUIDE.txt for the full filename list. Drop .wav or
-.ogg files into `assets/sfx/`. The loader:
-    try: snd = pygame.mixer.Sound("assets/sfx/boss_death.wav")
-    except: snd = None
-    if snd: snd.play()
-
-IMPORTANT: the new boss-death sound is `boss_death.wav`. Use the
-Tower Battles clip the user attached — it plays ONLY when a boss
-dies, not normal enemies.
-
----------------------------------------------------------------
-8. MUSIC
----------------------------------------------------------------
-Put .ogg files in `assets/music/`. Use:
-    pygame.mixer.music.load("assets/music/track1.ogg")
-    pygame.mixer.music.play(-1)  # loop
-Add a `NEXT_TRACK` key later if you want playlist cycling.
-
----------------------------------------------------------------
-9. ITEM / WEAPON DESIGN SYSTEM
----------------------------------------------------------------
-Put weapon stats in `weapons.py`:
-    WEAPONS = {
-      "pistol": {"dmg": 40, "cd": 0.20, "sprite": "items/pistol.png"},
-      ...
-      "spiked_gauntlets": {"dmg": 60, "melee": True, "long_jump": True,
-                           "sprite": "items/spiked_gauntlets.png"},
-    }
-
-To add a new boss drop weapon:
- 1. Add an entry to WEAPONS.
- 2. Drop a sprite into `assets/sprites/items/`.
- 3. In the boss's death handler, call
-    `player.add_weapon("spiked_gauntlets")`.
-
----------------------------------------------------------------
-10. STATUS EFFECT ICONS ABOVE PLAYER
----------------------------------------------------------------
-Maintain `player.status = {"overdrive": 3.2, "shield": 1.1, ...}`.
-Each frame, draw a row of 8x8 icons above the player sprite for
-every active effect. Icons live in `assets/sprites/items/status_*.png`.
-
----------------------------------------------------------------
-11. MULTI-FILE EXTENSION
----------------------------------------------------------------
-Recommended split once game.py gets big (>1500 lines):
-    game.py           Main loop + window
-    player.py         Player class + input
-    enemies.py        Basic enemies
-    bosses.py         10-boss definitions + AI
-    weapons.py        Weapon table + bullet logic
-    shops/            One file per shop
-    ui.py             HUD, boss bar, menus
-    keybinds.py       JSON load/save + lookup
-    audio.py          Sound loader with fallbacks
-    assets_loader.py  load_sprite() helper
-
-Each module imports from the others as needed. game.py is only
-the entry point and the game loop.
-
----------------------------------------------------------------
-12. BUILDING A STANDALONE EXE (OPTIONAL)
----------------------------------------------------------------
-Install pyinstaller, then from the `python_recreation/` folder:
-    pyinstaller --onefile --add-data "assets:assets" \
-                --add-data "keybinds.json:." game.py
-
-Output will be in `dist/game` (or game.exe on Windows).
-
----------------------------------------------------------------
-That's everything. Start with game.py and layer in features one
-module at a time. Good luck!
+ALMANAC
+Create a menu screen with Weapons, Enemies, Allies, Mechanics tabs. Use the same data tables as gameplay so descriptions never drift.

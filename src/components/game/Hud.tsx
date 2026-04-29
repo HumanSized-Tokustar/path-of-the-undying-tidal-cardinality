@@ -6,12 +6,12 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
   const odPct = stats.overdriveBar * 100;
   const miscCount = (stats as any).miscAmmo ?? stats.grenades ?? 0;
   const lives = (stats as any).lives ?? 3;
-  const inv: any = stats.inventory ?? { ranged: ["pistol","smg","shotgun","rifle","minigun","rocket"], melee: "knife", miscA: "grenade", miscB: "smoke", activeRanged: 0 };
+  const inv: any = stats.inventory ?? { ranged: ["pistol","smg","shotgun","rifle","sniper","rocket"], melee: "knife", miscA: "grenade", miscB: "medkit", activeRanged: 0 };
   const ranged = inv.ranged ?? [inv.loadout?.[0], inv.loadout?.[1], inv.loadout?.[2]];
   const active = inv.activeRanged ?? inv.active ?? 0;
   const meleeId = inv.melee ?? "knife";
   const miscAId = inv.miscA ?? "grenade";
-  const miscBId = inv.miscB ?? "smoke";
+  const miscBId = inv.miscB ?? "medkit";
 
   return (
     <div className="pointer-events-none absolute inset-0 pixel-text" style={{ fontSize: "clamp(8px, 1.2vw, 11px)" }}>
@@ -79,7 +79,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
       )}
 
       <div className="absolute bottom-20 left-3 text-[#fff7d6]/80">
-        TOTAL DMG: {Math.floor(stats.totalDamage)} ● KILLS: {stats.kills} ● BOSSES: {stats.bossKills}
+        TOTAL DMG: {Math.floor(stats.totalDamage)} ● KILLS: {stats.kills}
       </div>
 
       {/* Hotbar — 6 ranged + 1 melee + 2 misc */}
@@ -108,7 +108,7 @@ export const Hud = ({ stats }: { stats: GameStats }) => {
           </div>
           <div className="w-12 h-14 border-2 border-[#7be0ff] bg-[#0a0e1f]/80 flex flex-col items-center justify-center">
             <div className="text-[8px] text-[#fff7d6]">[P]</div>
-            <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscBId]?.color }}>{(WEAPONS[miscBId]?.name ?? "SMOKE").slice(0,6).toUpperCase()}</div>
+            <div className="text-[8px] mt-0.5" style={{ color: WEAPONS[miscBId]?.color }}>{(WEAPONS[miscBId]?.name ?? "MEDKIT").slice(0,6).toUpperCase()}</div>
           </div>
         </div>
       </div>
