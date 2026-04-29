@@ -7,7 +7,7 @@ export type GameAction =
   | "jump" | "dash" | "roll" | "parry"
   | "fire" | "melee" | "miscA" | "miscB" | "grab"
   | "shield" | "overdrive"
-  | "inventory" | "pause" | "shop"
+  | "inventory" | "pause" | "shop" | "interact"
   | "slot1" | "slot2" | "slot3" | "slot4" | "slot5" | "slot6";
 
 export const ALL_ACTIONS: GameAction[] = [
@@ -15,7 +15,7 @@ export const ALL_ACTIONS: GameAction[] = [
   "jump","dash","roll","parry",
   "fire","melee","miscA","miscB","grab",
   "shield","overdrive",
-  "inventory","pause","shop",
+  "inventory","pause","shop","interact",
   "slot1","slot2","slot3","slot4","slot5","slot6",
 ];
 
@@ -24,7 +24,7 @@ export const ACTION_LABEL: Record<GameAction, string> = {
   jump: "Jump (2nd bind)", dash: "Dash", roll: "Roll", parry: "Parry",
   fire: "Fire Ranged", melee: "Melee", miscA: "Misc A (hold to charge)", miscB: "Misc B (hold to charge)", grab: "Grab (hold to charge throw)",
   shield: "Shield", overdrive: "Overdrive",
-  inventory: "Inventory", pause: "Pause", shop: "Open Shop (at landmark)",
+  inventory: "Inventory", pause: "Pause", shop: "Open Shop (at landmark)", interact: "Interact / Buy (Enter)",
   slot1: "Ranged Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5", slot6: "Slot 6",
 };
 
@@ -44,6 +44,7 @@ export const DEFAULT_KEYBINDS: Record<GameAction, string> = {
   inventory: "tab",
   pause: "escape",
   shop: "t",
+  interact: "enter",
   slot1: "1", slot2: "2", slot3: "3", slot4: "4", slot5: "5", slot6: "6",
 };
 
@@ -73,8 +74,15 @@ export function resetKeybinds(): Record<GameAction, string> {
 export function normalizeKey(k: string): string {
   const low = k.toLowerCase();
   if (low === "spacebar") return " ";
+  if (low === "return") return "enter";
   return low;
 }
+
+// Pub/sub so UIs can re-render when keybinds change at runtime.
+type Listener = (kb: Record<GameAction, string>) => void;
+const listeners = new Set<Listener>();
+export function onKeybindsChange(fn: Listener) { listeners.add(fn); return () => listeners.delete(fn); }
+function notify() { for (const fn of listeners) try { fn({ ...current }); } catch {} }
 
 // Pretty-print a stored key for display.
 export function prettyKey(k: string): string {
@@ -91,7 +99,7 @@ export function prettyKey(k: string): string {
 // Singleton accessor used by the engine
 let current: Record<GameAction, string> = loadKeybinds();
 export function getKeybinds() { return current; }
-export function setKeybinds(kb: Record<GameAction, string>) { current = { ...kb }; saveKeybinds(current); }
+export function setKeybinds(kb: Record<GameAction, string>) { current = { ...kb }; saveKeybinds(current); notify(); }
 
 // Reverse lookup: which action does this key trigger?
 export function actionFor(key: string): GameAction | null {
