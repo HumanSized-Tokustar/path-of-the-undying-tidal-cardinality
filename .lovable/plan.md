@@ -1,97 +1,124 @@
-## Wave 9 — Landmarks, Shops, Status Effects, Bosses, Python Refresh
+I’ll implement this as a Wave 10 specification overhaul, prioritizing the gameplay-critical fixes first and then layering in the new content/UI.
 
-### 1. Landmark / Safe-Zone System (`src/game/engine.ts`)
+## Scope
 
-Replace the current "every 1000m" landmark generator with **fixed milestone scheduling** tied to distance traveled:
+### 1. Core fixes and removals
+- Fix the current shop purchase runtime bug by removing browser-incompatible `require(...)` calls from game methods and using normal imports.
+- Fix Main Shop purchases so sufficient currency always buys the selected item, updates inventory/currency immediately, and plays the purchase sound.
+- Make keybind changes take effect immediately in both UI and engine input handling. I’ll also clear stale held-key state after a rebind so an old key does not remain “stuck.”
+- Remove the boss system entirely:
+  - Remove boss imports, milestone checks, arena teleport, boss warnings, boss drops, boss death handling, boss-specific exceptions, boss arena landmark rendering, and boss-related menu text.
+  - Stop using boss kill count for ally caps/rank logic.
+- Change default Misc B loadout from Flashbang to Medkit.
+- Heavily nerf player movement:
+  - Lower base horizontal speed.
+  - Reduce distance-based player speed growth.
+  - Reduce dash/roll burst multipliers and recharge behavior so movement cannot outrun enemy loading.
+  - Keep a strict lower speed cap than the previous 40 m/s behavior.
 
-- Main Shop + Augment (Upgrade) Shop: every **1234 m** — augment spawns ~280px to the right of the main shop.
-- Ally Shop: every **1667 m** (independent cycle).
-- Boss Arena: every **5555 m** (independent cycle, see §3).
-- Shady Figure: every **3333 m** (cheap rare-augment cart).
+### 2. Enemy AI and spawn scaling
+- Rework spawn rate to match the requested formula:
+  - Base: 5 enemies every 5 seconds.
+  - SON mode: doubles the current spawn amount.
+  - Every 666 meters: +6 enemies per 5 seconds.
+  - Caps: DUNCE 7 increases, ALRIGHT 15 increases, SON 40 increases.
+  - Every 5th increase: display exactly `(THE TIDE RISES)`.
+- Make spawn logic respond to the player’s current movement speed so fast forward motion queues enough enemies and avoids empty stretches.
+- Keep safe-zone blocking around shop landmarks so enemies do not spawn/enter within the protected radius.
+- Add universal enemy mobility:
+  - All ground enemies get double-jump capacity.
+  - All enemies get a short dash behavior with cooldown.
+- Add new enemies:
+  - Necromancer: ALRIGHT mode exclusive after 2000m, black wizard, 200 HP, spawns minions.
+  - Minion: 30 HP, 20 damage, spawned by Necromancer.
+  - THE BRON: SON mode exclusive after 1700m, black basketball player, 300 HP, throws large orange ball for 50 damage.
+  - GIANT: SON mode exclusive after 1700m, very large gray humanoid, 777 HP, stomp attack for 70 damage.
+  - APACHE: SON mode exclusive after 1700m, helicopter, 500 HP, flies and fires bullets/rockets.
 
-Implementation:
-- Track `nextMainAt`, `nextAllyAt`, `nextShadyAt`, `nextBossAt` (in meters). When `worldX/PX_PER_METER >= nextX`, push the landmark and advance.
-- `inSafeZone` already exists; expand it to also **disable enemy AI / spawning** within **9 m (= 288 px)** of any shop landmark center. In `updateEnemies`, if `Math.abs(e.x - safeCenter) < 288`, skip movement + skip firing. In `spawnEnemy`, reject `spawnX` inside any safe zone.
-- Currency rebalance: drop `coin` rates -25%, drop `token`/`crystal` rates -50% to make them harder to find (per prior user request, reaffirmed).
+### 3. Shop inventory refresh
+- Replace/refresh Main Shop coin inventory with the requested weapon list and prices.
+- Add/adjust weapon definitions and visuals for:
+  - Sniper, Rocket Launcher, Oiler, Portal Gun, Flamethrower, Gold Machine Gun.
+  - Katana, Yamato, Gauntlet.
+  - Napalm, Shockwave, Lightning Rod, Disco Bomb, Disposable Shield, Obliterator Ray.
+- Enforce purchase limits:
+  - Ranged/melee weapons can only be purchased once.
+  - Misc items can be purchased up to 10 times.
+- Give each weapon a distinguishable procedural equipped/used visual, including basic melee swing animation for melee weapons except Gauntlets, which get a punching animation.
+- Implement or stub gameplay mechanics faithfully enough to work in the current engine:
+  - Oiler slippery ground vulnerability zone.
+  - Portal A/B teleport pair lasting 3 seconds with 4 second cooldown.
+  - Flamethrower continuous fire stream.
+  - Napalm fire grenade.
+  - Shockwave leap effect for player and enemies.
+  - Lightning Rod placed Tesla hazard that chains with other rods.
+  - Disco Bomb dance-disable for enemies for 6 seconds.
+  - Disposable Shield barrier blocking attacks for 10 seconds.
+  - Obliterator Ray huge white infinity ray with 999999999 damage.
 
-### 2. Shop UI Overhaul (`src/components/game/ShopOverlay.tsx`)
+### 4. Upgrade Shop refresh
+- Convert/refresh the Upgrade Shop to crystal currency.
+- Add requested status effects with exact mechanics:
+  - Fire: 20 DPS for 5 seconds.
+  - Lightning Chain: hits 5 targets.
+  - Enfeeble: enemy attack -67% for 6 seconds.
+  - Freeze: stun 3 seconds.
+  - Slow: speed -67% for 5 seconds.
+  - Ultracrit: TBD price chosen to fit economy; 1% chance for 4x damage with red glint.
+- Add general crystal stat boosts with suitable prices:
+  - Ammo increases in 50 and 150 amounts.
+  - Max health increases up to 500 total.
+  - Extra dash once.
+  - Extra revive up to 2 purchases.
+- Make upgrade application work for ranged, melee, and misc classes rather than only the active ranged weapon.
 
-Rebuild to match the user's mockups:
+### 5. Ally Shop refresh
+- Replace the Ally Shop with the requested token roster:
+  - Lil One: 15 tokens, 20s lifespan, 70 HP, sword, 10 damage.
+  - Sheriff Seriff: 40 tokens, 4m 11s lifespan, 800 HP, revolver, 79 damage.
+  - Eradidog: 120 tokens, 6m 21s lifespan, 500 HP, fast rocket dog, 59 damage.
+  - STAlien: 200 tokens, 8m lifespan, 1000 HP, laser gun 100 damage, UFO orbital laser every 20s for 500 damage.
+  - Dude Person: 99999 tokens, TBD lifespan chosen as effectively long/endgame, huge HP, instakill rock/punch behavior.
+- Implement friendly AI entities directly in the engine:
+  - Spawn beside the player on purchase.
+  - Follow/fight near the player.
+  - Target enemies, deal their described damage, and expire when lifespan timer ends.
+  - Render their distinguishable procedural sprites.
 
-- **Main Shop**: yellow/blue palette, header "COINS LEFT: N" + EXIT button, 2×3 grid of class-tagged cards (MISC / GENERAL / RANGED / MELEE), big sprite preview area, "TAP TO READ ITEM DESCRIPTION" hint, paginated PAGE 1/N at bottom.
-- **Augment Shop**: purple palette, lightning bolt accent, RANGED / MELEE / MISC rows of empty boxes for 5 owned weapons, right-side STATUS EFFECTS panel (FIRE / FREEZE / STUN / ENFEEBLE / BLEED / ULTRA CRIT) each with an ADD button + crystal cost, "MAX 3 UPGRADES PER ITEM" footer.
-- **Ally Shop**: green palette, "TOKEN LEFT: N" header, horizontal scroll of ally cards w/ sprite, lifespan, cost, READ DESCRIPTION button, max-allies counter (20 normal / 50 if all bosses beaten).
+### 6. Almanac UI
+- Add an Almanac accessible from the main menu.
+- The Almanac will include tabs/sections for:
+  - Weapons: every weapon, class, cost, visual design, stats, mechanics.
+  - Enemies: every standard and new enemy, difficulty/distance spawn rules, health, attacks, sprite descriptions.
+  - Mechanics: movement, shops, safe zones, spawn scaling, Tide events, status effects, allies, currencies, and purchase limits.
+- Use procedural mini-previews matching the in-game sprite/design descriptions so players understand what to expect.
 
-Interaction:
-- **ENTER** key (or click) on a selected card buys it. Engine exposes `interactPressed` input wired to the new `interact` keybind (default ENTER).
-- On successful purchase, play `audio.play("applepay")` (already loaded as `sfx_apple_pay.mp3`).
-- Selected card shown via local `useState` selectedId; arrow-key navigation moves selection.
+### 7. Documentation / Python recreation guide
+- Update Python recreation docs to match this new boss-free Wave 10 specification:
+  - Remove boss sections from guides.
+  - Update asset folder instructions for new sprites and effects.
+  - Include the exact new shop inventories, enemy types, spawn scaling rules, ally behaviors, movement nerfs, and Almanac data.
+  - Explain how to recreate the systems in Python/Pygame, including file structure and where each sprite/audio asset should go.
 
-### 3. Boss Arena (separate stadium)
+## Technical notes
+- Files expected to change include:
+  - `src/game/engine.ts`
+  - `src/game/weapons.ts`
+  - `src/game/shops.ts`
+  - `src/game/keybinds.ts`
+  - `src/components/game/ShopOverlay.tsx`
+  - `src/components/game/StartScreen.tsx`
+  - new Almanac component file(s)
+  - Python recreation guide files under `python_recreation/`
+- `src/game/bosses.ts` may be left unused or removed if allowed during implementation; all runtime boss behavior will be removed from the game either way.
+- I will not add external asset dependencies. All new visuals will be procedural pixel-art shapes inspired by your descriptions, keeping it cost-efficient.
+- I’ll also fix the captured runtime error: `Uncaught ReferenceError: require is not defined` in `buyMainItem`.
 
-When player hits a 5555m milestone:
-- `enterBossArena()`: snapshot `worldX`/`px`, then **teleport** to a synthetic gray-stadium stage (different background palette, no day/night, no weather, no other enemies, no other landmarks). Implemented by setting `arenaMode = true` and short-circuiting weather/landmark/enemy spawn code while it's true; render a stone-tile floor + colosseum back wall.
-- Spawn the next boss from `bosses.ts` (already have all 10).
-- Player physically clamped between `arenaLeft`/`arenaRight` (already implemented; just widen to full screen).
-- On boss death: drop the boss-specific weapon/ally + bundle (coins / heal / powerup / crystals / tokens — already present), play `bossDeath` SFX, then `exitBossArena()` restores `worldX`/`px` and resumes normal run.
-
-### 4. Status Effects (`src/game/weapons.ts` + `engine.ts`)
-
-Add `StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit"` and a per-enemy `statuses: { kind, until, data }[]`.
-
-Augment shop entries (crystal costs per spec):
-- **Fire** — 20 crystals — `tickDamage 10/s` for 5s.
-- **Crystal Lightning** — 60 crystals — bullet chains to up to **5** nearest enemies within 140px.
-- **Enfeeble** — 76 crystals — enemy outgoing damage ×0.20 for 5s.
-- **Freeze** — 100 crystals — enemy `vx=vy=0` and AI skipped for 3s.
-- **Slow** — 70 crystals — enemy speed ×0.50 for 5s.
-- **UltraCrit** — 90 crystals — 1% chance any hit deals ×4 damage.
-
-Stored per-weapon under `inventory.augments` keyed by weapon id (max 3 per item, enforced in shop). Apply on damage application in `damageEnemy()`. Render small status icons above enemy HP bar.
-
-### 5. Bug Fixes & Pacing
-
-- **Pause-menu controls list** (`PauseOverlay.tsx`): replace the hard-coded WASD/F/R text with a generated list that reads `getKeybinds()` and shows live bindings (same source as Settings).
-- **Settings persistence**: already saves to `localStorage`; verified `engine.ts` calls `kbActionFor` per keypress so changes apply instantly. Add an `onChange` event so the pause overlay re-renders when keybinds change.
-- **Enemy spawn pacing**: scale `spawnTimer` interval by `1 / (1 + playerAvgSpeed/40)` so enemy density doesn't lag behind a fast player. Also clamp landmark generation lookahead to `camX + W + 1200` (currently 800) to prevent pop-in at high speed.
-- **Map Info menu** (`StartScreen.tsx`): new "MAP INFO" button opens a panel listing: Main Shop @ 1234m (×N), Ally Shop @ 1667m, Shady @ 3333m, Boss Arena @ 5555m, plus icon legend.
-
-### 6. Sprite Sourcing (no licensed assets used)
-
-All sprites are drawn procedurally on canvas (boxes, circles, gradients) — no external sources. Where the boss images you provided show a specific look (Megger Knight spiked fists, Aegis shield, Bum Ahh throne, etc.), the engine renders a simplified pixel approximation using the `bossColor`/`bossAccent`/`bossEye` already in `bosses.ts`. If you want authentic sprite art, you can later drop PNGs into `src/assets/sprites/bosses/` and we'll wire `<image>` draws — the SPRITE_GUIDE.txt already documents the expected filenames.
-
-### 7. Python Recreation Refresh (`python_recreation/`)
-
-- Rewrite **`game.py`** to mirror the new TS systems:
-  - Fixed milestone landmark generator (1234/1667/3333/5555).
-  - Safe-zone enemy AI gate (9-meter radius).
-  - Status-effect framework (`Status` dataclass, applied on hit).
-  - Boss arena teleport (separate `Scene` enum value with its own draw + update).
-  - Shop UIs matching the mockups (pygame surfaces, ENTER to buy, plays `applepay.wav`).
-  - Player max speed 40 m/s clamp.
-  - Reads `keybinds.json` at startup, falls back to defaults.
-- Update **`keybinds.json`** to add `"interact": "return"`.
-- Rewrite **`IMPLEMENTATION_GUIDE.txt`** as a single ordered walkthrough: file layout, install pygame, asset folder structure, how to add the audio assets (where they came from — user uploads), how to drop in optional sprite PNGs, how to extend each system.
-- Update **`SPRITE_GUIDE.txt`** + **`SOUND_GUIDE.txt`** with the new shop palettes + apple-pay/ENTER sound cue.
-
-### 8. Files Touched
-
-```text
-src/game/engine.ts              landmarks, safe-zone AI gate, status effects,
-                                arena teleport, pacing, interact keybind
-src/game/keybinds.ts            + "interact" action (default Enter)
-src/game/shops.ts               crystal-cost status augments, max 3/item rule
-src/game/weapons.ts             status hooks on damage application
-src/components/game/ShopOverlay.tsx     full re-skin (3 palettes, ENTER, Apple Pay)
-src/components/game/PauseOverlay.tsx    live-keybind controls list
-src/components/game/StartScreen.tsx     + MAP INFO button & panel
-python_recreation/game.py               full rewrite mirroring above
-python_recreation/keybinds.json         + interact
-python_recreation/IMPLEMENTATION_GUIDE.txt   refreshed step-by-step
-python_recreation/SPRITE_GUIDE.txt      shop palettes
-python_recreation/SOUND_GUIDE.txt       apple-pay cue
-```
-
-### Confirm
-
-Approve this and I'll switch to build mode and implement all 8 sections in one pass, ending with the updated Python files attached as artifacts you can download.
+## Validation after implementation
+- Verify Main Shop purchase works with enough coins and fails cleanly without enough currency.
+- Verify keybind changes apply immediately.
+- Verify no boss arena/boss milestone behavior remains.
+- Verify default Misc B is Medkit.
+- Verify enemies continue spawning while the player moves quickly.
+- Verify Almanac opens from the menu and shows weapons, mechanics, and enemies.
+- Verify ally purchases spawn timed friendly AI.
