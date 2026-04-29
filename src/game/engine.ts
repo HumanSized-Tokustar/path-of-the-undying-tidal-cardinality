@@ -1463,6 +1463,8 @@ export class Game {
     if (meters > 400) pool.push("shankerSwift", "shooterElite");
     if (meters > 700) pool.push("rider");
     if (meters > 1000) pool.push("bomber", "sniper", "bruteHeavy");
+    if (this.difficulty === "alright" && meters > 2000) pool.push("necromancer");
+    if (this.difficulty === "son" && meters > 1700) pool.push("bron", "giant", "apache");
     const type = pick(pool);
 
     const stats: Record<EnemyType, { hp: number; w: number; h: number }> = {
@@ -1475,9 +1477,14 @@ export class Game {
       rider:        { hp: 140, w: 44, h: 30 },
       bomber:       { hp: 90,  w: 50, h: 24 },
       sniper:       { hp: 130, w: 24, h: 40 },
+      necromancer:  { hp: 200, w: 28, h: 42 },
+      minion:       { hp: 30,  w: 20, h: 28 },
+      bron:         { hp: 300, w: 30, h: 42 },
+      giant:        { hp: 777, w: 70, h: 88 },
+      apache:       { hp: 500, w: 76, h: 30 },
     };
     const base = stats[type];
-    const flying = type === "bomber" || type === "rider";
+    const flying = type === "bomber" || type === "rider" || type === "apache";
     const baseY = flying ? randi(120, 240) : GROUND_Y - base.h;
     const hpMul = this.diffEnemyHp();
 
@@ -1490,12 +1497,17 @@ export class Game {
       flying, baseY,
       jumpCd: 0, disabled: 0, grabbed: false,
       thrown: false, throwVx: 0, throwVy: 0,
-      legPhase: 0, glintTimer: 0, dying: false, statuses: [],
+      legPhase: 0, glintTimer: 0, dying: false, statuses: [], dashCd: rand(1, 2), jumpsLeft: 2, summonCd: 3,
     });
     if (meters > 500 && Math.random() < 0.3 && this.enemiesSpawned < this.spawnAllowance && this.enemiesSpawned < 100) {
       this.spawnEnemy();
       this.enemiesSpawned++;
     }
+  }
+
+  private spawnMinion(x: number) {
+    const hpMul = this.diffEnemyHp();
+    this.enemies.push({ type:"minion", x, y:GROUND_Y-28, vx:0, vy:0, w:20, h:28, hp:30*hpMul, maxHp:30*hpMul, onGround:true, facing:-1, fireCd:1, aiTimer:0, targetDx:0, hurtFlash:0, burstLeft:0, burstCd:0, chargeTime:0, charging:false, flying:false, baseY:GROUND_Y-28, jumpCd:0, disabled:0, grabbed:false, thrown:false, throwVx:0, throwVy:0, legPhase:0, glintTimer:0, dying:false, statuses:[], dashCd:1, jumpsLeft:2, summonCd:0 });
   }
 
   private updateEnemies(dtRaw: number) {
@@ -1626,6 +1638,29 @@ export class Game {
               });
             }
             break;
+          case "necromancer":
+            e.vx = dist > 260 ? Math.sign(dx) * 55 : -Math.sign(dx) * 70;
+            e.summonCd = (e.summonCd ?? 3) - dt;
+            if (e.summonCd <= 0) { e.summonCd = 5; this.spawnMinion(e.x - e.facing * 25); }
+            break;
+          case "minion":
+            e.vx = Math.sign(dx) * 170;
+            break;
+          case "bron":
+            e.vx = dist > 240 ? Math.sign(dx) * 95 : 0;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 560) { e.fireCd = 1.25 * fireMul; this.bullets.push({ x:e.x, y:e.y+18, vx:e.facing*520, vy:-40, dmg:50, life:2, friendly:false, r:12, pierce:0, color:"#f97316" }); }
+            break;
+          case "giant":
+            e.vx = Math.sign(dx) * 38;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 160) { e.fireCd = 2.2 * fireMul; this.screenShake = Math.max(this.screenShake, 12); this.damagePlayer(70 * this.diffEnemyDmg()); }
+            break;
+          case "apache":
+            e.vx = -120; e.y = e.baseY + Math.sin(this.timeAlive * 2) * 18;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0 && dist < 700) { e.fireCd = 0.75 * fireMul; this.spawnEnemyBullet(e, 560, Math.random() < 0.25 ? 35 : 12, Math.random() < 0.25 ? 80 : 0); }
+            break;
           case "sniper":
             e.vx = (Math.random() < 0.01) ? Math.sign(dx) * 80 : 0;
             if (!e.charging && dist < 700) {
@@ -1713,10 +1748,13 @@ export class Game {
             }
           }
         }
-        // Occasional jump toward player platform
-        if (e.onGround && e.jumpCd <= 0 && Math.random() < 0.008 * espd) {
-          e.vy = -520; e.onGround = false; e.jumpCd = 1.5;
+        // All enemies can double-jump and short dash.
+        if (e.onGround) e.jumpsLeft = 2;
+        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < 0.012 * espd || Math.abs(dyToPlayer) > 60)) {
+          e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
         }
+        e.dashCd = (e.dashCd ?? 1.5) - dt;
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260; e.dashCd = rand(1.8, 3.2); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
@@ -1725,8 +1763,10 @@ export class Game {
                        e.y < this.py + this.ph && e.y + e.h > this.py;
       if (touching && !e.thrown) {
         const m = this.diffEnemyDmg() * this.statusAttackMul(e);
-        if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
+        if (e.type === "minion") this.damagePlayer(20 * m);
+        else if (e.type === "shanker" || e.type === "shankerSwift") this.damagePlayer(8 * m);
         else if (e.type === "rider") this.damagePlayer(15 * m);
+        else if (e.type === "giant") this.damagePlayer(30 * m);
         else if (e.type === "bruteHeavy" || e.type === "brute") this.damagePlayer(12 * m);
       }
 
@@ -1799,7 +1839,7 @@ export class Game {
             h.pair!.used?.add(obj);
           }
         };
-        tryTeleport({ get x(){ return this.px; }, set x(v){ this.px=v; }, get y(){ return this.py; }, set y(v){ this.py=v; }, h:this.ph });
+        if (Math.hypot(this.px - h.x, this.py - h.y) < 28) { this.px = h.pair!.x + 36; this.py = h.pair!.y - this.ph; }
         for (const e of this.enemies) tryTeleport(e);
       }
     }
