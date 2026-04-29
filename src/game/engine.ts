@@ -287,9 +287,18 @@ export class Game {
   private inSafeZone = false;
   private odPrevMaxHp = 123;
   // Wave 8 — boss milestone tracker
-  private nextBossMilestone = 1;    // 1 => 555m, 2 => 1110m, ...
+  private nextBossMilestone = 1;    // 1 => 5555m, 2 => 11110m, ...
   private bossActive: Enemy | null = null;
   private arenaLeft = 0; private arenaRight = 0;
+  // Wave 9 — fixed-interval landmark milestones (in meters)
+  private nextMainAt = 1234;
+  private nextAllyAt = 1667;
+  private nextShadyAt = 3333;
+  // Wave 9 — Boss arena teleport
+  private arenaMode = false;
+  private arenaSavedWorldX = 0; private arenaSavedPx = 0; private arenaSavedCamX = 0;
+  // Track defeated bosses for ally cap
+  private defeatedBossIds = new Set<string>();
 
   private last = 0; private rafId = 0;
 
