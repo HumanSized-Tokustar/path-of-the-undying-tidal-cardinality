@@ -1748,6 +1748,91 @@ export class Game {
     if (this.grabbed && (!this.enemies.includes(this.grabbed) || this.grabbed.dying)) this.grabbed = null;
   }
 
+
+  private addStatus(e: Enemy, kind: StatusKind, dur: number, data?: any) {
+    if (!e.statuses) e.statuses = [];
+    const now = performance.now() / 1000;
+    const ex = e.statuses.find(s => s.kind === kind);
+    if (ex) { ex.until = now + dur; ex.data = data ?? ex.data; }
+    else e.statuses.push({ kind, until: now + dur, data });
+  }
+
+  private placePortal(x: number, y: number) {
+    const portal: FieldHazard = { kind: this.portalPending ? "portalB" : "portalA", x, y, life: 3, used: new WeakSet<object>() };
+    if (this.portalPending) {
+      portal.pair = this.portalPending;
+      this.portalPending.pair = portal;
+      this.hazards.push(portal);
+      this.portalPending = null;
+      this.flashDescription("PORTAL B LINKED — 3s");
+    } else {
+      this.portalPending = portal;
+      this.hazards.push(portal);
+      this.flashDescription("PORTAL A SET — fire again for B");
+    }
+  }
+
+  private updateHazards(dt: number) {
+    for (const h of this.hazards) {
+      h.life -= dt;
+      h.cd = Math.max(0, (h.cd ?? 0) - dt);
+      if (h.kind === "oil") {
+        for (const e of this.enemies) if (!e.dying && Math.abs(e.x - h.x) < 90 && Math.abs(e.y + e.h - GROUND_Y) < 20) { e.vx *= 1.04; e.hurtFlash = Math.max(e.hurtFlash, 0.05); (e as any).vulnerable = 1; }
+      }
+      if (h.kind === "lightning" && (h.cd ?? 0) <= 0) {
+        h.cd = 0.89;
+        const rods = this.hazards.filter(r => r.kind === "lightning" && r !== h && Math.abs(r.x - h.x) < 260);
+        const chain = [h, ...rods].slice(0, 5);
+        for (const node of chain) {
+          const target = this.enemies.find(e => !e.dying && Math.hypot(e.x - node.x, e.y - node.y) < 150);
+          if (target) this.damageEnemy(target, 15);
+        }
+      }
+      if (h.kind === "disco") {
+        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 150) { e.disabled = Math.max(e.disabled, 6); e.vy = e.onGround ? -260 : e.vy; }
+      }
+      if ((h.kind === "portalA" || h.kind === "portalB") && h.pair) {
+        const tryTeleport = (obj: any) => {
+          if (h.used?.has(obj)) return;
+          if (Math.hypot((obj.x ?? this.px) - h.x, (obj.y ?? this.py) - h.y) < 28) {
+            obj.x = h.pair!.x + 36; obj.y = h.pair!.y - (obj.h ?? this.ph);
+            h.pair!.used?.add(obj);
+          }
+        };
+        tryTeleport({ get x(){ return this.px; }, set x(v){ this.px=v; }, get y(){ return this.py; }, set y(v){ this.py=v; }, h:this.ph });
+        for (const e of this.enemies) tryTeleport(e);
+      }
+    }
+    this.hazards = this.hazards.filter(h => h.life > 0);
+    if (this.portalPending && !this.hazards.includes(this.portalPending)) this.portalPending = null;
+  }
+
+  private updateAllies(dt: number) {
+    this.allies = this.allies.filter(a => {
+      a.life -= dt;
+      if (a.life <= 0 || a.hp <= 0) return false;
+      const target = this.enemies.find(e => !e.dying);
+      if (target) {
+        const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
+        a.vx = Math.sign(dx) * a.def.speed * 22;
+        a.fireCd -= dt; a.specialCd -= dt;
+        if (Math.abs(dx) < 520 && a.fireCd <= 0) {
+          a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
+          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg); }
+          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999);
+          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent });
+        }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120); }
+      } else {
+        const dx = (this.px - 45) - a.x; a.vx = Math.sign(dx) * Math.min(Math.abs(dx), a.def.speed * 18);
+      }
+      a.x += a.vx * dt;
+      a.vy += 1200 * dt; a.y += a.vy * dt;
+      if (a.y + a.def.h > GROUND_Y) { a.y = GROUND_Y - a.def.h; a.vy = 0; }
+      return true;
+    });
+  }
+
   private spawnEnemyBullet(e: Enemy, speed: number, dmg: number, vyOffset = 0) {
     this.bullets.push({
       x: e.x, y: e.y + e.h * 0.4,
