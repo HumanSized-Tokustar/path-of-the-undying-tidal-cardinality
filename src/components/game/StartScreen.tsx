@@ -5,7 +5,7 @@ import { SettingsOverlay } from "@/components/game/SettingsOverlay";
 type Difficulty = "dunce" | "alright" | "son";
 
 export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; onDifficulty?: (d: Difficulty) => void }) => {
-  const [view, setView] = useState<"main" | "settings" | "credits">("main");
+  const [view, setView] = useState<"main" | "settings" | "credits" | "map">("main");
   const [musicVol, setMusicVol] = useState(audio.getMusicVolume());
   const [sfxVol, setSfxVol] = useState(audio.getSfxVolume());
   const [diff, setDiff] = useState<Difficulty>("alright");
@@ -57,6 +57,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
             <div className="space-y-2.5">
               <Btn onClick={onStart} primary>▶ START GAME</Btn>
               <Btn onClick={() => setShowSettings(true)}>⚙ SETTINGS / KEYBINDS</Btn>
+              <Btn onClick={() => setView("map")}>🗺 MAP INFO</Btn>
               <Btn onClick={() => setView("credits")}>★ CREDITS</Btn>
             </div>
             <div className="mt-4">
