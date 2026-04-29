@@ -101,6 +101,21 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
             <div className="mt-6"><Btn onClick={() => setView("main")}>◀ BACK</Btn></div>
           </>
         )}
+
+        {view === "map" && (
+          <>
+            <h2 className="text-[hsl(var(--primary))] text-[14px] mb-4">MAP INFO</h2>
+            <div className="space-y-1.5 text-[10px] text-left text-foreground/90">
+              <div>🏪 <b className="text-[#ffd84a]">MAIN SHOP</b> — every <b>1234m</b> (with adjacent UPGRADE shop)</div>
+              <div>🛡 <b className="text-[#d97bff]">UPGRADE SHOP</b> — spawns next to every Main Shop (crystals/runes + status effects)</div>
+              <div>👥 <b className="text-[#7bff8a]">ALLY SHOP</b> — every <b>1667m</b> (tokens, max 20 allies / 50 if all bosses beaten)</div>
+              <div>🎩 <b className="text-[#ffb347]">SHADY GUY</b> — every <b>3333m</b> (rare augments cart)</div>
+              <div>⚔ <b className="text-[#ff3a3a]">BOSS ARENA</b> — every <b>5555m</b> (teleports you to a sealed gray stadium; defeat the boss to escape, drops unique loot)</div>
+              <div className="pt-2 text-foreground/60">Standing within 9m of any shop = SAFE ZONE (no enemy spawns / AI suspended). Press T at a shop to enter, ENTER on a card to buy.</div>
+            </div>
+            <div className="mt-5"><Btn onClick={() => setView("main")}>◀ BACK</Btn></div>
+          </>
+        )}
       </div>
       {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
     </div>

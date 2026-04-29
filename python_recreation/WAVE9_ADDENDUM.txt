@@ -1,0 +1,90 @@
+PYTHON RECREATION — WAVE 9 ADDENDUM (read alongside IMPLEMENTATION_GUIDE.txt)
+================================================================
+
+Mirror these systems in your pygame port. Drop NEW assets into:
+  python_recreation/assets/sfx/      (apple_pay.wav for purchases)
+  python_recreation/assets/sprites/  (optional override PNGs — see SPRITE_GUIDE.txt)
+  python_recreation/assets/music/    (any .ogg/.wav, looped)
+
+Where assets came from:
+- All in-game sprites are drawn procedurally with pygame.draw.rect / circle.
+  No external sprite source — colors come from bosses.py / enemies.py.
+- Sound effects: only the boss-death "Tower Battles void death" clip and
+  "apple_pay.wav" come from user-uploaded files. Drop them into assets/sfx/
+  with those exact filenames and they'll be auto-loaded.
+- Music: any .ogg/.wav files in assets/music/ play in shuffle order.
+
+1) LANDMARK SYSTEM (replace previous one)
+   Track three counters in your World class (in meters):
+     next_main_at  = 1234     # main shop + adjacent augment shop
+     next_ally_at  = 1667
+     next_shady_at = 3333
+     next_boss_at  = 5555     # arena
+   On each frame after `meters = world_x / PX_PER_METER`:
+     while meters + 60 >= next_main_at:
+         landmarks.append(Landmark(kind="main",  x=next_main_at*PX_PER_METER))
+         landmarks.append(Landmark(kind="shady", x=next_main_at*PX_PER_METER + 280))
+         next_main_at += 1234
+     # repeat for ally / shady
+   Safe zone = within 9 m (288 px) of any shop landmark center.
+   While inside: do NOT spawn enemies, set enemy.frozen = True for any
+   enemy already inside (skip movement + skip firing).
+
+2) BOSS ARENA TELEPORT
+   When meters >= next_boss_at:
+     save_state = (world_x, player.x, cam_x)
+     enemies.clear(); bullets.clear(); landmarks.clear()
+     arena_mode = True
+     player.x = 200; cam_x = 0
+     spawn_boss(next_boss_index)
+     next_boss_at += 5555
+   Clamp player.x to [cam_x+32, cam_x+W-32] while arena_mode.
+   On boss death: play 'boss_death.wav', drop bundle (coins + crystals +
+   tokens + heal + boss-specific weapon/ally), schedule arena exit:
+     pygame.time.set_timer(EXIT_ARENA_EVENT, 1200, loops=1)
+   On EXIT_ARENA_EVENT restore (world_x, player.x, cam_x), arena_mode = False.
+
+3) STATUS EFFECTS (per-enemy list of (kind, until_time, data))
+   Augment shop sells these for crystals (active ranged weapon only,
+   max 3 per weapon, key = f"{weapon_id}:{status}"):
+     fire       20  crystals  -> 10 dmg/s for 5s
+     lightning  60  crystals  -> chain to 5 enemies w/in 140 px (instant)
+     enfeeble   76  crystals  -> enemy outgoing damage * 0.20 for 5s
+     freeze    100  crystals  -> enemy can't act for 3s
+     slow       70  crystals  -> enemy speed * 0.50 for 5s
+     ultracrit  90  crystals  -> 1% chance any hit deals *4 damage
+   Apply on damage_enemy(): roll ultracrit first, then push statuses
+   onto enemy. Tick fire dot per frame. Use status_speed_mul() and
+   status_attack_mul() helpers when computing enemy movement / touch dmg.
+
+4) SHOPS (3 surfaces, 3 palettes — see Screenshot mockups)
+     MAIN  : yellow #ffd84a on blue #1a3aa8, "COINS LEFT: N", 3-col grid
+     ALLY  : green  #7bff8a on dark green #1d6a3a, horizontal scroll
+     SHADY : purple #d97bff on dark purple #3a1a6a, runes left + status right
+   Open with T at a landmark, ESC to close. ENTER on selected card buys it
+   AND plays apple_pay.wav. First click selects, second click buys.
+
+5) PLAYER MAX SPEED
+   Hard-clamp player.vx to +-40 m/s (40 * PX_PER_METER px/s) every frame.
+
+6) LOOT REBALANCE
+   coin drop chance = 0.55 (heavy) / 0.25 (normal)   (was .70/.35)
+   token drop chance = 0.035                          (was .07)
+   crystal drop chance = 0.015                        (was .03)
+
+7) KEYBINDS — keybinds.json now includes:
+     "interact": "return"
+   Add a Settings -> Controls screen using pygame.event.peek for live capture.
+   Pause overlay reads keybinds.json so the displayed bindings stay live.
+
+8) MAP INFO
+   Add a "MAP INFO" entry to the start menu listing:
+     MAIN SHOP   - every 1234m
+     ALLY SHOP   - every 1667m
+     SHADY GUY   - every 3333m
+     BOSS ARENA  - every 5555m
+   Note that standing within 9 m of any shop is a SAFE ZONE.
+
+That's it for Wave 9. The full game.py rewrite + per-boss AI port is
+scheduled for the next pass; everything above is wired in the TS engine
+already and is the source of truth for the Python mirror.
