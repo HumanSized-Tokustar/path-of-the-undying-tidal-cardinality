@@ -1,26 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Game } from "@/game/engine";
 import { SettingsOverlay } from "@/components/game/SettingsOverlay";
+import { ALL_ACTIONS, ACTION_LABEL, getKeybinds, prettyKey, onKeybindsChange, GameAction } from "@/game/keybinds";
 
 export const PauseOverlay = ({ game }: { game: Game }) => {
   const [showSettings, setShowSettings] = useState(false);
+  const [kb, setKb] = useState({ ...getKeybinds() });
+  useEffect(() => onKeybindsChange((next) => setKb({ ...next })), []);
   return (
     <div className="absolute inset-0 flex items-center justify-center pixel-text p-4">
       <div className="bg-[#0a0e1f]/95 border-2 border-[#ffd84a] p-5 text-center w-[min(92vw,560px)] max-h-[90vh] flex flex-col">
         <h2 className="text-[#ffd84a] text-[clamp(16px,3vw,28px)] mb-3" style={{ textShadow: "3px 3px 0 #1a2342" }}>PAUSED</h2>
-        <div className="text-[#fff7d6] text-[clamp(8px,1.2vw,11px)] space-y-1 mb-4 text-left overflow-y-auto flex-1 min-h-0 pr-1">
-          <div>WASD — Move  •  W on ladder — Climb up  •  S on ladder — Climb down</div>
-          <div>SPACE or W — Jump (×2)  •  S+SPACE — Drop through</div>
-          <div>Q — Dash (2 charges, 2s recharge)</div>
-          <div>Z — Roll (2 charges, 4s recharge — spin, 2× dash length, knocks enemies back)</div>
-          <div>S in air — Ground Slam</div>
-          <div>F — Fire ranged  •  R — Melee</div>
-          <div>O — Misc A  •  P — Misc B (hold to charge throw)</div>
-          <div>1-6 — Switch ranged  •  Wheel — Cycle</div>
-          <div>E — Parry  •  V — Grab (hold to charge throw further)</div>
-          <div>X — Shield  •  G — Overdrive</div>
-          <div>TAB — Inventory  •  ESC — Pause</div>
-          <div className="pt-1 text-[#7be0ff]">All keys rebindable in SETTINGS below.</div>
+        <div className="text-[#fff7d6] text-[clamp(8px,1.2vw,11px)] grid grid-cols-2 gap-x-3 gap-y-0.5 mb-4 text-left overflow-y-auto flex-1 min-h-0 pr-1">
+          {ALL_ACTIONS.map((a: GameAction) => (
+            <div key={a} className="flex justify-between gap-2">
+              <span className="truncate">{ACTION_LABEL[a]}</span>
+              <span className="text-[#7be0ff]">[{prettyKey(kb[a])}]</span>
+            </div>
+          ))}
         </div>
         <div className="flex flex-col gap-2 mt-2">
           <button onClick={() => game.resume()}

@@ -6,6 +6,7 @@ import { StartScreen } from "@/components/game/StartScreen";
 import { DeathScreen } from "@/components/game/DeathScreen";
 import { PauseOverlay } from "@/components/game/PauseOverlay";
 import { InventoryOverlay } from "@/components/game/InventoryOverlay";
+import { ShopOverlay } from "@/components/game/ShopOverlay";
 
 const Index = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -45,6 +46,9 @@ const Index = () => {
       {phase === "dead" && stats && <DeathScreen stats={stats} onRestart={handleRestart} />}
       {phase === "paused" && gameRef.current && <PauseOverlay game={gameRef.current} />}
       {phase === "inventory" && gameRef.current && stats && <InventoryOverlay game={gameRef.current} stats={stats} />}
+      {phase === "shop" && gameRef.current && stats && (
+        <ShopOverlay game={gameRef.current} stats={stats} kind={(gameRef.current as any).currentShopKind ?? "main"} />
+      )}
     </main>
   );
 };
