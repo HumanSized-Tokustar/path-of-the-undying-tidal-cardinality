@@ -1048,30 +1048,48 @@ export class Game {
       return true;
     });
 
-    // Landmarks
-    const metersNow = Math.floor(this.worldX / PX_PER_METER);
-    if (this.landmarks.length === 0 || this.landmarks[this.landmarks.length-1].x < this.camX + W + 800) {
-      const baseM = metersNow + 200;
-      const nextMain = Math.ceil(baseM / 1000) * 1000;
-      const lx = nextMain * PX_PER_METER;
-      if (!this.landmarks.find(l => Math.abs(l.x - lx) < 200)) {
-        this.landmarks.push({ x: lx, kind: "main", w: 220 });
-        this.landmarks.push({ x: lx + 260, kind: "ally", w: 200 });
-        if (nextMain % 7777 < 1000) this.landmarks.push({ x: lx + 520, kind: "shady", w: 180 });
+    // Landmarks — fixed-interval milestones (Wave 9)
+    const metersNow = this.worldX / PX_PER_METER;
+    if (!this.arenaMode) {
+      // Main + Augment together every 1234m
+      while (metersNow + 60 >= this.nextMainAt) {
+        const lx = this.nextMainAt * PX_PER_METER;
+        this.landmarks.push({ x: lx,        kind: "main",  w: 220 });
+        this.landmarks.push({ x: lx + 280,  kind: "shady", w: 200 }); // augment / upgrade adjacent
+        this.nextMainAt += 1234;
+      }
+      // Ally shop every 1667m
+      while (metersNow + 60 >= this.nextAllyAt) {
+        const lx = this.nextAllyAt * PX_PER_METER;
+        this.landmarks.push({ x: lx, kind: "ally", w: 220 });
+        this.nextAllyAt += 1667;
+      }
+      // Shady cart every 3333m (extra discount augments — same shop kind)
+      while (metersNow + 60 >= this.nextShadyAt) {
+        const lx = this.nextShadyAt * PX_PER_METER;
+        this.landmarks.push({ x: lx, kind: "shady", w: 200 });
+        this.nextShadyAt += 3333;
       }
     }
     this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
-    this.inSafeZone = this.landmarks.some(l =>
-      this.px + this.pw > l.x && this.px < l.x + l.w);
+    // Safe zone = standing within 9 m (288 px) of any shop landmark center
+    const SAFE_RADIUS = 9 * PX_PER_METER;
+    const pCx = this.px + this.pw/2;
+    this.inSafeZone = this.landmarks.some(l => {
+      if (l.kind === "boss") return false;
+      const cx = l.x + l.w/2;
+      return Math.abs(pCx - cx) < SAFE_RADIUS;
+    });
 
     // Weather (excluding day/night which is independent)
     this.weatherSwitch -= dt;
-    if (this.weatherSwitch <= 0) {
+    if (this.weatherSwitch <= 0 && !this.arenaMode) {
       const opts: any[] = ["clear","clear","rain","snow","storm","fog","windy"];
       this.weather = opts[Math.floor(Math.random() * opts.length)];
       this.weatherSwitch = rand(45, 90);
       this.flashDescription(`WEATHER — ${this.weather.toUpperCase()}`);
     }
+    if (this.arenaMode) this.weather = "clear";
     if ((this.weather === "rain" || this.weather === "storm") && this.rainDrops.length < 80) {
       for (let i = this.rainDrops.length; i < 80; i++) this.rainDrops.push({ x: rand(0, W), y: rand(-H, 0), vy: rand(620, 880) });
     }
@@ -1097,26 +1115,28 @@ export class Game {
     }
 
     this.warnTimer -= dt;
-    // Boss milestone spawn (every 555m)
+    // Boss milestone — every 5555m. Teleport into separate arena.
     const metersNowBoss = this.worldX / PX_PER_METER;
-    const dueMilestone = Math.floor(metersNowBoss / BOSS_SPAWN_INTERVAL_METERS) + 1;
-    if (!this.bossActive && dueMilestone > this.nextBossMilestone - 1 && metersNowBoss >= (this.nextBossMilestone) * BOSS_SPAWN_INTERVAL_METERS - 5) {
-      this.spawnBoss(this.nextBossMilestone);
+    if (!this.arenaMode && !this.bossActive && metersNowBoss >= this.nextBossMilestone * 5555 - 5) {
+      this.enterBossArena(this.nextBossMilestone);
       this.nextBossMilestone++;
     }
     // Arena wall clamp while boss is alive
-    if (this.bossActive && !this.bossActive.dying) {
+    if (this.arenaMode && this.bossActive && !this.bossActive.dying) {
       if (this.px < this.arenaLeft) this.px = this.arenaLeft;
       if (this.px + this.pw > this.arenaRight) this.px = this.arenaRight - this.pw;
     }
     if (this.warnTimer <= 0) {
       this.warnTimer = 1;
-      const m = Math.floor(this.worldX / PX_PER_METER);
-      const toShop = 1000 - (m % 1000);
-      const toBoss = 5555 - (m % 5555);
-      if (toBoss < 80) this.warning = `BOSS APPROACHING — ${toBoss}m`;
-      else if (toShop < 60) this.warning = `Main shop — ${toShop}m`;
-      else if (this.inSafeZone) this.warning = `SAFEZONE — protected`;
+      const m = Math.floor(metersNow);
+      const toMain  = Math.max(0, this.nextMainAt - m);
+      const toAlly  = Math.max(0, this.nextAllyAt - m);
+      const toBoss  = Math.max(0, this.nextBossMilestone * 5555 - m);
+      if (this.arenaMode && this.bossActive) this.warning = `ARENA — ${this.bossActive.bossName}`;
+      else if (toBoss < 100) this.warning = `BOSS ARENA APPROACHING — ${toBoss}m`;
+      else if (toMain < 80)  this.warning = `Main shop — ${toMain}m`;
+      else if (toAlly < 80)  this.warning = `Ally shop — ${toAlly}m`;
+      else if (this.inSafeZone) this.warning = `SAFE ZONE — press T to enter shop`;
       else this.warning = null;
     }
 
