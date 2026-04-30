@@ -2591,29 +2591,96 @@ export class Game {
         ctx.fillStyle = "rgba(90,120,180,0.35)";
         ctx.fillRect(hx - 18, GROUND_Y - 7, 36, 3);
       } else if (h.kind === "lightning") {
+        // Tesla coil base + animated zap arcs to nearest enemies
+        ctx.fillStyle = "#5a5f66"; ctx.fillRect(hx - 6, GROUND_Y - 6, 12, 6);
         ctx.fillStyle = "#7be0ff";
         ctx.fillRect(hx - 2, GROUND_Y - 44, 4, 44);
         ctx.fillStyle = "#fff7d6";
-        ctx.fillRect(hx - 6, GROUND_Y - 48, 12, 6);
+        ctx.fillRect(hx - 6, GROUND_Y - 50, 12, 8);
+        // Find nearest enemies and draw jagged zap lines
+        const tipX = hx, tipY = GROUND_Y - 50;
+        ctx.strokeStyle = "rgba(123,224,255,0.85)"; ctx.lineWidth = 2;
+        let zaps = 0;
+        for (const e of this.enemies) {
+          if (e.dying || zaps >= 3) continue;
+          const ex = e.x - this.camX;
+          const d = Math.hypot(ex - tipX, (e.y + e.h/2) - tipY);
+          if (d < 160) {
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            const segs = 5;
+            for (let s = 1; s <= segs; s++) {
+              const t = s / segs;
+              const lx = tipX + (ex - tipX) * t + (Math.random() - 0.5) * 8;
+              const ly = tipY + ((e.y + e.h/2) - tipY) * t + (Math.random() - 0.5) * 8;
+              ctx.lineTo(lx, ly);
+            }
+            ctx.stroke();
+            zaps++;
+          }
+        }
+        // Chain to other rods
+        for (const o of this.hazards) {
+          if (o === h || o.kind !== "lightning") continue;
+          const ox = o.x - this.camX;
+          if (Math.abs(ox - tipX) > 200) continue;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          const segs = 6;
+          for (let s = 1; s <= segs; s++) {
+            const t = s / segs;
+            const lx = tipX + (ox - tipX) * t + (Math.random() - 0.5) * 6;
+            const ly = tipY + (Math.random() - 0.5) * 8;
+            ctx.lineTo(lx, ly);
+          }
+          ctx.stroke();
+        }
       } else if (h.kind === "shield") {
+        // Layered shimmering shield
+        const sh = Math.sin(this.animTime * 6) * 2;
+        ctx.fillStyle = "#0a0e1f"; ctx.fillRect(hx - 13, h.y - 37, 26, 58);
         ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 3;
         ctx.strokeRect(hx - 12, h.y - 36, 24, 56);
-        ctx.fillStyle = "rgba(123,224,255,0.16)";
+        ctx.fillStyle = "rgba(123,224,255,0.22)";
         ctx.fillRect(hx - 10, h.y - 34, 20, 52);
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(hx - 9 + sh, h.y - 30, 2, 44);
       } else if (h.kind === "shockwave") {
         const pulse = 1 - h.life / 0.45;
-        ctx.strokeStyle = "rgba(158,214,255,0.8)"; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(hx, h.y - 6, 18 + pulse * 72, 0, Math.PI * 2); ctx.stroke();
+        for (let r = 0; r < 3; r++) {
+          ctx.strokeStyle = `rgba(158,214,255,${0.8 - r * 0.22})`; ctx.lineWidth = 3 - r;
+          ctx.beginPath(); ctx.arc(hx, h.y - 6, 12 + pulse * (60 + r * 20), 0, Math.PI * 2); ctx.stroke();
+        }
       } else if (h.kind === "ray") {
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillRect(hx, h.y - 6, 320 * this.pFacing, 12);
+        // Thick beam with glow + ∞ at muzzle
+        const len = 320 * this.pFacing;
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(hx, h.y - 12, len, 24);
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.fillRect(hx, h.y - 6, len, 12);
+        ctx.fillStyle = "#fff7d6";
+        ctx.fillRect(hx + (this.pFacing > 0 ? 0 : -8), h.y - 4, 8, 8);
+        // ∞
+        this.drawInfinity(ctx, hx + (this.pFacing > 0 ? 6 : -6), h.y - 14, 4, "#ffffff");
       } else if (h.kind === "portalA" || h.kind === "portalB") {
         ctx.strokeStyle = h.kind === "portalA" ? "#38bdf8" : "#ff8c42";
         ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18 + Math.sin(this.animTime * 8) * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 10, 0, Math.PI * 2); ctx.stroke();
       } else if (h.kind === "disco") {
+        // Rotating multicolor orb
+        const r = 11 + Math.sin(this.animTime * 10) * 2;
+        for (let i = 0; i < 6; i++) {
+          const ang = this.animTime * 4 + i * (Math.PI / 3);
+          const hue = (i * 60 + this.animTime * 80) % 360;
+          ctx.fillStyle = `hsl(${hue} 90% 60%)`;
+          ctx.beginPath();
+          ctx.arc(hx + Math.cos(ang) * r, h.y - 16 + Math.sin(ang) * r, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.fillStyle = "#ff4fd8";
-        ctx.beginPath(); ctx.arc(hx, h.y - 16, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx, h.y - 16, 5, 0, Math.PI * 2); ctx.fill();
       }
     }
 
