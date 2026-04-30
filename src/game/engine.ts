@@ -1053,6 +1053,9 @@ export class Game {
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.gravity ?? 600) * dt;
       return p.life > 0;
     });
+    // Wave 12 perf cap: prevent particle storms from crashing the tab.
+    if (this.particles.length > 600) this.particles.splice(0, this.particles.length - 600);
+    if (this.bullets.length > 400) this.bullets.splice(0, this.bullets.length - 400);
 
     this.pickups = this.pickups.filter(p => {
       p.life -= dt;
