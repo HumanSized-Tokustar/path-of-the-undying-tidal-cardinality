@@ -100,6 +100,7 @@ interface Bullet {
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
   color: string;
   kind?: "normal" | "napalm" | "oil" | "portal" | "disco";
+  source?: WeaponId | "ally" | "hazard" | "player";
 }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; gravity?: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
@@ -303,6 +304,7 @@ export class Game {
   private nextAllyAt = 1667;
   private nextShadyAt = 3333;
   private maxDashCharges = 2;
+  private maxRollCharges = 2;
   private maxHpBonusBought = 0;
   private reviveBuys = 0;
   private purchaseCounts: Record<string, number> = {};
@@ -478,7 +480,7 @@ export class Game {
     this.lives = this.maxLives;
     this.slowFall = 0;
     this.maxDashCharges = 2; this.dashCharges = this.maxDashCharges; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
-    this.rollCharges = 2; this.rollRecharge = 0;
+    this.maxRollCharges = 2; this.rollCharges = this.maxRollCharges; this.rollRecharge = 0;
     (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
@@ -530,6 +532,32 @@ export class Game {
     }
   }
   currentShopKind: ShopKind | null = null;
+  canBuyMainItem(id: string) {
+    const it = MAIN_SHOP.find(x => x.id === id); if (!it) return false;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (it.limit && bought >= it.limit) return false;
+    if (it.weapon && it.limit === 1 && this.inventory.owned.includes(it.weapon)) return false;
+    if (it.revive && this.reviveBuys >= 2) return false;
+    return true;
+  }
+  canBuyAugment(id: string) {
+    const a = AUGMENT_SHOP.find(x => x.id === id); if (!a) return false;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (a.limit && bought >= a.limit) return false;
+    if (!a.limit && this.inventory.augments.includes(id)) return false;
+    if (a.stat === "maxhp" && this.maxHpBonusBought >= 500) return false;
+    if (a.stat === "revive" && this.reviveBuys >= 2) return false;
+    return true;
+  }
+  activeWeaponStatusCount() {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    return this.inventory.augments.filter(a => a.startsWith(`${wid}:`)).length;
+  }
+  canBuyStatusAugment(statusId: string) {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    const key = `${wid}:${statusId}`;
+    return !this.inventory.augments.includes(key) && this.activeWeaponStatusCount() < 3;
+  }
   toggleShop() {
     if (this.phase === "shop") { this.resume(); return; }
     if (this.phase !== "playing") return;
@@ -551,9 +579,18 @@ export class Game {
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
+    if (it.ammo) this.ammo += it.ammo;
     if (it.grenades) this.miscAmmo += it.grenades;
     if (it.weapon && it.limit && it.limit > 1) this.miscAmmo += 1;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
+    if (it.dash) { this.maxDashCharges += it.dash; this.dashCharges = Math.min(this.maxDashCharges, this.dashCharges + it.dash); }
+    if (it.roll) { this.maxRollCharges += it.roll; this.rollCharges = Math.min(this.maxRollCharges, this.rollCharges + it.roll); }
+    if (it.revive && this.reviveBuys < 2) {
+      const add = Math.min(it.revive, 2 - this.reviveBuys);
+      this.reviveBuys += add;
+      this.maxLives += add;
+      this.lives += add;
+    }
     audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
@@ -788,9 +825,9 @@ export class Game {
     }
     if (this.rollRecharge > 0) {
       this.rollRecharge -= dt;
-      if (this.rollRecharge <= 0 && this.rollCharges < 2) {
+      if (this.rollRecharge <= 0 && this.rollCharges < this.maxRollCharges) {
         this.rollCharges++;
-        if (this.rollCharges < 2) this.rollRecharge = 5;
+        if (this.rollCharges < this.maxRollCharges) this.rollRecharge = 5;
       }
     }
 
@@ -899,7 +936,7 @@ export class Game {
               x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
               vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
               dmg: w.dmg * dmgMult, life: w.id === "sniper" ? 1.6 : 0.9, friendly: true, r: w.id === "rocket" ? 8 : w.id === "oiler" ? 6 : 4, pierce: w.pierce,
-              color: w.color, kind: w.id === "oiler" ? "oil" : "normal",
+              color: w.color, kind: w.id === "oiler" ? "oil" : "normal", source: w.id,
             });
           }
         }
@@ -917,7 +954,7 @@ export class Game {
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
-          this.damageEnemy(e, dmg);
+          this.damageEnemy(e, dmg, w.id);
           if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
           if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
         }
@@ -977,15 +1014,15 @@ export class Game {
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) {
         if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
-        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
         return false;
       }
       if (b.friendly) {
         for (const e of this.enemies) {
           if (e.dying) continue;
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
-            this.damageEnemy(e, b.dmg);
-            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
+            this.damageEnemy(e, b.dmg, b.source);
+            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
             if (b.pierce > 0) { b.pierce--; } else return false;
           }
         }
@@ -1885,20 +1922,27 @@ export class Game {
     this.allies = this.allies.filter(a => {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
-      const target = this.enemies.find(e => !e.dying);
+      const leashX = this.px - this.pFacing * 54;
+      const target = this.enemies
+        .filter(e => !e.dying)
+        .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
       if (target) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx) * a.def.speed * 22;
+        const followSpeed = a.def.speed * 26;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
         a.fireCd -= dt; a.specialCd -= dt;
         if (Math.abs(dx) < 520 && a.fireCd <= 0) {
           a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
-          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg); }
-          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999);
-          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent });
+          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg, "ally"); }
+          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999, "ally");
+          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent, source:"ally" });
         }
-        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120); }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120, "ally"); }
       } else {
-        const dx = (this.px - 45) - a.x; a.vx = Math.sign(dx) * Math.min(Math.abs(dx), a.def.speed * 18);
+        const dx = leashX - a.x;
+        a.facing = dx > 0 ? 1 : -1;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22);
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
@@ -1916,9 +1960,14 @@ export class Game {
     });
   }
 
-  private damageEnemy(e: Enemy, dmg: number) {
+  private hasStatusOnWeapon(weaponId: WeaponId | undefined, statusId: StatusKind): boolean {
+    if (!weaponId || WEAPONS[weaponId].class !== "ranged") return false;
+    return this.inventory.augments.includes(`${weaponId}:${statusId}`);
+  }
+  private damageEnemy(e: Enemy, dmg: number, source?: WeaponId | "ally" | "hazard" | "player") {
     if (e.dying) return;
-    if (this.hasStatusOnActive("ultracrit") && Math.random() < 0.01) dmg *= 4;
+    const sourceWeapon = typeof source === "string" && source in WEAPONS ? source as WeaponId : undefined;
+    if (this.hasStatusOnWeapon(sourceWeapon, "ultracrit") && Math.random() < 0.01) dmg *= 4;
     e.hp -= dmg;
     e.hurtFlash = 0.12;
     this.totalDmg += dmg;
@@ -1928,13 +1977,14 @@ export class Game {
       x: e.x, y: e.y + e.h/2, vx: rand(-120, 120), vy: rand(-200, -40),
       life: 0.4, max: 0.4, color: "#ffd166", size: 2,
     });
-    this.applyWeaponStatuses(e);
+    this.applyWeaponStatuses(e, sourceWeapon);
   }
-  private applyWeaponStatuses(e: Enemy) {
+  private applyWeaponStatuses(e: Enemy, weaponId?: WeaponId) {
+    if (!weaponId || WEAPONS[weaponId].class !== "ranged") return;
     if (!e.statuses) e.statuses = [];
     const now = performance.now() / 1000;
     const apply = (k: StatusKind, dur: number, data?: any) => {
-      if (!this.hasStatusOnActive(k)) return;
+      if (!this.hasStatusOnWeapon(weaponId, k)) return;
       const ex = e.statuses!.find(s => s.kind === k);
       if (ex) { ex.until = now + dur; if (data) ex.data = data; }
       else e.statuses!.push({ kind: k, until: now + dur, data });
@@ -1943,7 +1993,7 @@ export class Game {
     apply("enfeeble", 5);
     apply("freeze", 3);
     apply("slow", 5);
-    if (this.hasStatusOnActive("lightning")) {
+    if (this.hasStatusOnWeapon(weaponId, "lightning")) {
       let src = e; const chained: Enemy[] = [];
       for (let i = 0; i < 4; i++) {
         const next = this.enemies.find(ee =>
@@ -2005,12 +2055,12 @@ export class Game {
     if (Math.random() < 0.015) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 5), life: 12 });
   }
 
-  private explode(x: number, y: number, dmg: number, radius: number) {
+  private explode(x: number, y: number, dmg: number, radius: number, source?: WeaponId | "ally" | "hazard" | "player") {
     this.screenShake = Math.max(this.screenShake, 8);
     this.enemies.forEach(e => {
       if (e.dying) return;
       const dx = e.x - x, dy = e.y - y;
-      if (dx*dx + dy*dy < radius*radius) this.damageEnemy(e, dmg);
+      if (dx*dx + dy*dy < radius*radius) this.damageEnemy(e, dmg, source);
     });
     for (let i = 0; i < 24; i++) this.particles.push({
       x, y, vx: rand(-340, 340), vy: rand(-340, -40),
@@ -2429,6 +2479,41 @@ export class Game {
       ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 3, p.y - 3, 2, 2);
     }
 
+    // Field hazards / placed weapons
+    for (const h of this.hazards) {
+      const hx = h.x - this.camX;
+      if (h.kind === "oil") {
+        ctx.fillStyle = "rgba(20,20,28,0.8)";
+        ctx.fillRect(hx - 42, GROUND_Y - 10, 84, 10);
+        ctx.fillStyle = "rgba(90,120,180,0.35)";
+        ctx.fillRect(hx - 18, GROUND_Y - 7, 36, 3);
+      } else if (h.kind === "lightning") {
+        ctx.fillStyle = "#7be0ff";
+        ctx.fillRect(hx - 2, GROUND_Y - 44, 4, 44);
+        ctx.fillStyle = "#fff7d6";
+        ctx.fillRect(hx - 6, GROUND_Y - 48, 12, 6);
+      } else if (h.kind === "shield") {
+        ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 3;
+        ctx.strokeRect(hx - 12, h.y - 36, 24, 56);
+        ctx.fillStyle = "rgba(123,224,255,0.16)";
+        ctx.fillRect(hx - 10, h.y - 34, 20, 52);
+      } else if (h.kind === "shockwave") {
+        const pulse = 1 - h.life / 0.45;
+        ctx.strokeStyle = "rgba(158,214,255,0.8)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(hx, h.y - 6, 18 + pulse * 72, 0, Math.PI * 2); ctx.stroke();
+      } else if (h.kind === "ray") {
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.fillRect(hx, h.y - 6, 320 * this.pFacing, 12);
+      } else if (h.kind === "portalA" || h.kind === "portalB") {
+        ctx.strokeStyle = h.kind === "portalA" ? "#38bdf8" : "#ff8c42";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18, 0, Math.PI * 2); ctx.stroke();
+      } else if (h.kind === "disco") {
+        ctx.fillStyle = "#ff4fd8";
+        ctx.beginPath(); ctx.arc(hx, h.y - 16, 10, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
     // Enemies (humanoid rigs)
     for (const e of this.enemies) {
       this.drawEnemy(e);
@@ -2458,6 +2543,32 @@ export class Game {
 
     // Player (humanoid)
     this.drawPlayer();
+
+    // Friendly allies
+    for (const a of this.allies) {
+      const ax = a.x - this.camX - a.def.w / 2;
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
+      ctx.fillStyle = a.def.color;
+      ctx.fillRect(ax + 3, a.y + 10, a.def.w - 6, a.def.h - 18);
+      ctx.fillStyle = a.def.accent;
+      ctx.fillRect(ax + 1, a.y + 8, a.def.w - 2, 4);
+      ctx.fillStyle = "#fff7d6";
+      ctx.fillRect(ax + 6, a.y + 2, a.def.w - 12, 8);
+      ctx.fillStyle = a.def.eye;
+      const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
+      ctx.fillRect(eyeX, a.y + 5, 2, 2);
+      ctx.fillStyle = a.def.accent;
+      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42, 10, 3);
+      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6, 6, 6); }
+      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2, a.def.w + 4, a.def.h + 4); }
+      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y, a.def.w - 12, 3); }
+      ctx.fillStyle = "#111";
+      ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
+      ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
+      ctx.fillStyle = "rgba(123,255,138,0.9)";
+      ctx.fillRect(ax, a.y - 6, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
+    }
 
     // Particles
     for (const p of this.particles) {
@@ -2708,16 +2819,48 @@ export class Game {
 
     // Arm carrying weapon
     const activeW = WEAPONS[this.inventory.ranged[this.inventory.activeRanged]];
+    const muzzleFlash = Math.max(this.fireCdR / Math.max(activeW.fireCd, 0.01), 0);
     ctx.fillStyle = "#fde2a0";
     if (this.pFacing > 0) ctx.fillRect(psx + this.pw - 6, psy + 18, 4, 8);
     else ctx.fillRect(psx + 2, psy + 18, 4, 8);
-    // Weapon
+    // Weapon silhouette + per-weapon identity
+    const gunX = this.pFacing > 0 ? psx + this.pw : psx - 18;
+    const barrelX = this.pFacing > 0 ? gunX + 14 : gunX - 4;
     ctx.fillStyle = "#222";
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw, psy + 20, 12, 4);
-    else ctx.fillRect(psx - 12, psy + 20, 12, 4);
+    if (activeW.id === "sniper") {
+      ctx.fillRect(gunX, psy + 19, 18, 3);
+      ctx.fillStyle = "#5a5f66"; ctx.fillRect(gunX + 4, psy + 17, 6, 2);
+    } else if (activeW.id === "rocket") {
+      ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#4f8a35"; ctx.fillRect(gunX + (this.pFacing > 0 ? 12 : -2), psy + 19, 4, 3);
+    } else if (activeW.id === "flamethrower") {
+      ctx.fillRect(gunX, psy + 19, 12, 4);
+      ctx.fillStyle = "#ff6a00"; ctx.fillRect(psx + (this.pFacing > 0 ? 2 : this.pw - 8), psy + 16, 6, 10);
+    } else if (activeW.id === "portalgun") {
+      ctx.fillRect(gunX, psy + 19, 12, 4);
+      ctx.fillStyle = "#38bdf8"; ctx.fillRect(barrelX, psy + 18, 2, 2);
+      ctx.fillStyle = "#ff8c42"; ctx.fillRect(barrelX, psy + 22, 2, 2);
+    } else if (activeW.id === "gold_machine_gun") {
+      ctx.fillStyle = "#7a5a10"; ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#ffd84a"; ctx.fillRect(gunX + 2, psy + 17, 10, 1);
+    } else if (activeW.id === "oiler") {
+      ctx.fillRect(gunX, psy + 19, 10, 4);
+      ctx.fillStyle = "#1f2937"; ctx.fillRect(psx + (this.pFacing > 0 ? 0 : this.pw - 6), psy + 16, 5, 9);
+    } else if (activeW.id === "shotgun") {
+      ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#7a4a22"; ctx.fillRect(gunX + (this.pFacing > 0 ? 2 : 8), psy + 23, 3, 4);
+    } else if (activeW.id === "rifle") {
+      ctx.fillRect(gunX, psy + 19, 16, 3);
+      ctx.fillStyle = "#9ed6ff"; ctx.fillRect(gunX + 5, psy + 18, 5, 1);
+    } else {
+      ctx.fillRect(gunX, psy + 20, 12, 4);
+    }
     ctx.fillStyle = activeW.color;
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, psy + 20, 2, 2);
-    else ctx.fillRect(psx - 12, psy + 20, 2, 2);
+    ctx.fillRect(this.pFacing > 0 ? gunX + 10 : gunX, psy + 20, 2, 2);
+    if (muzzleFlash > 0.6 && activeW.kind === "ranged") {
+      ctx.fillStyle = activeW.id === "portalgun" ? "#fff7d6" : activeW.id === "flamethrower" ? "#ffb347" : "#fff199";
+      ctx.fillRect(this.pFacing > 0 ? barrelX + 2 : barrelX - 3, psy + 18, 4, 6);
+    }
 
     // Melee swing arc
     if (this.meleeSwing > 0) {
