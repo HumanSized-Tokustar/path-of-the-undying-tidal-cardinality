@@ -910,7 +910,7 @@ export class Game {
               x: this.px + this.pw/2, y: this.py + this.ph * 0.4,
               vx: this.pFacing * w.speed * cs, vy: w.speed * sn,
               dmg: w.dmg * dmgMult, life: w.id === "sniper" ? 1.6 : 0.9, friendly: true, r: w.id === "rocket" ? 8 : w.id === "oiler" ? 6 : 4, pierce: w.pierce,
-              color: w.color, kind: w.id === "oiler" ? "oil" : "normal",
+              color: w.color, kind: w.id === "oiler" ? "oil" : "normal", source: w.id,
             });
           }
         }
@@ -928,7 +928,7 @@ export class Game {
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
-          this.damageEnemy(e, dmg);
+          this.damageEnemy(e, dmg, w.id);
           if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
           if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
         }
@@ -988,15 +988,15 @@ export class Game {
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) {
         if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
-        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
         return false;
       }
       if (b.friendly) {
         for (const e of this.enemies) {
           if (e.dying) continue;
           if (b.x > e.x - e.w/2 && b.x < e.x + e.w/2 && b.y > e.y && b.y < e.y + e.h) {
-            this.damageEnemy(e, b.dmg);
-            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
+            this.damageEnemy(e, b.dmg, b.source);
+            if (b.r >= 8) { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.addStatus(e,"fire",5,{dps:20}); return false; }
             if (b.pierce > 0) { b.pierce--; } else return false;
           }
         }
