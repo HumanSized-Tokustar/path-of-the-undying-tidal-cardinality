@@ -1941,32 +1941,91 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
-      const allyPace = clamp(0.9 + this.playerPaceFactor * 0.45, 1.0, 1.85);
-      const target = this.enemies
-        .filter(e => !e.dying)
-        .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
-      if (target) {
+      const allyPace = clamp(0.95 + this.playerPaceFactor * 0.55, 1.05, 2.05);
+
+      // Find best target within engagement range; otherwise stick with player.
+      const ENGAGE_RANGE = 700;
+      const candidates = this.enemies.filter(e => !e.dying);
+      let target: Enemy | null = null;
+      let bestScore = Infinity;
+      for (const e of candidates) {
+        const d = Math.hypot(e.x - a.x, e.y - a.y);
+        if (d > ENGAGE_RANGE) continue;
+        // Prefer closer-to-player threats slightly to defend the player.
+        const playerD = Math.hypot(e.x - this.px, e.y - this.py);
+        const score = d + playerD * 0.4;
+        if (score < bestScore) { bestScore = score; target = e; }
+      }
+
+      // Re-anchor toward player every frame: blend follow vector even while engaging.
+      const dxToPlayer = leashX - a.x;
+      const playerDist = Math.abs(dxToPlayer);
+      const wantsRecenter = playerDist > 240;
+
+      if (target && !wantsRecenter) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        const followSpeed = a.def.speed * 26 * allyPace;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        const followSpeed = a.def.speed * 32 * allyPace;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.4, followSpeed);
+        // Vertical jump to match target/player
         if (Math.abs(target.y - a.y) > 46 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
-          a.vy = -470 * clamp(allyPace, 1, 1.45);
+          a.vy = -490 * clamp(allyPace, 1, 1.5);
           this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
         }
-        if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
-        a.fireCd -= dt; a.specialCd -= dt;
-        if (Math.abs(dx) < 520 && a.fireCd <= 0) {
-          a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
-          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg, "ally"); }
-          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999, "ally");
-          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent, source:"ally" });
+        // Lil One melee lunge
+        if (a.def.id === "ally_lil_one" && Math.abs(dx) < 90 && Math.abs(dx) > 30) {
+          a.vx = Math.sign(dx) * 360 * allyPace;
         }
-        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120, "ally"); }
+        if (Math.abs(dx) < 60 && a.def.id === "ally_lil_one") a.vx *= 0.3;
+
+        a.fireCd -= dt; a.specialCd -= dt;
+        // Friendly-fire avoidance: skip ranged shot if player is between ally and target.
+        const playerBetween = (this.px > Math.min(a.x, target.x) && this.px < Math.max(a.x, target.x))
+          && Math.abs(this.py - a.y) < 60;
+
+        if (Math.abs(dx) < 540 && a.fireCd <= 0 && (a.def.id === "ally_lil_one" || !playerBetween)) {
+          a.fireCd = a.def.id === "ally_lil_one" ? 0.55 : a.def.id === "ally_eradidog" ? 0.45 : a.def.id === "ally_sheriff" ? 0.7 : 0.7;
+          if (a.def.id === "ally_lil_one") {
+            if (Math.abs(dx) < 60) this.damageEnemy(target, a.def.dmg, "ally");
+          } else if (a.def.id === "ally_dude") {
+            this.damageEnemy(target, 999999999, "ally");
+          } else {
+            // Lead the target by predicting velocity.
+            const lead = (target.vx ?? 0) * 0.15;
+            const projVx = a.facing * (a.def.id === "ally_eradidog" ? 620 : 780) + lead;
+            this.bullets.push({
+              x: a.x, y: a.y + a.def.h * 0.4, vx: projVx, vy: 0,
+              dmg: a.def.dmg, life: 1.4, friendly: true,
+              r: a.def.id === "ally_eradidog" ? 7 : 4,
+              pierce: a.def.id === "ally_eradidog" ? 99 : 0,
+              color: a.def.accent, source: "ally",
+              kind: a.def.id === "ally_eradidog" ? "napalm" : "normal",
+            });
+            // Eradidog rocket: also AoE on the target frame for clear feel
+            if (a.def.id === "ally_eradidog") {
+              this.explode(target.x, target.y, a.def.dmg * 0.45, 80, "ally");
+            }
+          }
+        }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) {
+          a.specialCd = 14;
+          this.explode(target.x, target.y, 500, 160, "ally");
+        }
       } else {
-        const dx = leashX - a.x;
-        a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22 * allyPace);
-        if (Math.abs(dx) > 520) { a.x = this.px - this.pFacing * 70; a.y = Math.min(a.y, this.py + 8); this.spawnPuff(a.x, a.y + a.def.h, a.def.accent); }
+        // Follow / catch up to player
+        const dx = dxToPlayer;
+        a.facing = this.pFacing as 1 | -1;
+        const followSpeed = a.def.speed * 30 * allyPace;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.0, followSpeed);
+        // Vertical follow: jump up if player is above on a platform
+        if (this.py + 4 < a.y - 30 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
+          a.vy = -480 * clamp(allyPace, 1, 1.5);
+        }
+        // Tight teleport leash so they never get left behind.
+        if (Math.abs(dx) > 380 || a.x < this.camX - 60 || a.x > this.camX + W + 60) {
+          a.x = this.px - this.pFacing * 70;
+          a.y = Math.min(a.y, this.py + 8);
+          this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
+        }
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
