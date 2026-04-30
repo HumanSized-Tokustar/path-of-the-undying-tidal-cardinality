@@ -1647,7 +1647,7 @@ export class Game {
         const dist = Math.abs(dx);
         const dy = (this.py + this.ph/2) - (e.y + e.h/2);
         const fireMul = this.diffEnemyFire();
-        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.7 : 1.48);
+        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.85 : 1.6);
 
         switch (e.type) {
           case "shanker":
@@ -1782,7 +1782,7 @@ export class Game {
         }
       }
 
-      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.22, 0.75, this.difficulty === "son" ? 1.45 : 1.28);
+      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.26, 0.75, this.difficulty === "son" ? 1.55 : 1.4);
       if (!e.flying && !e.thrown) {
         // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
         let onLadder: Platform | null = null;
