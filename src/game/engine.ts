@@ -954,7 +954,9 @@ export class Game {
       const w = WEAPONS[this.inventory.melee];
       this.fireCdM = w.fireCd;
       this.meleeSwing = 1;
-      const dmg = w.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
+      // Wave 12 buff: melee class now near-instakill (massive base multiplier)
+      const meleeBuffMul = w.id === "knife" ? 25 : w.id === "katana" ? 30 : w.id === "yamato" ? 40 : w.id === "gauntlet" ? 35 : 20;
+      const dmg = w.dmg * meleeBuffMul * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       const reach = w.id === "yamato" ? 92 : w.id === "katana" ? 82 : w.id === "gauntlet" ? 58 : 60;
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
