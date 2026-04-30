@@ -1732,7 +1732,7 @@ export class Game {
         }
       }
 
-      const espd = this.diffEnemySpeed();
+      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.22, 0.75, this.difficulty === "son" ? 1.45 : 1.28);
       if (!e.flying && !e.thrown) {
         // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
         let onLadder: Platform | null = null;
@@ -1788,7 +1788,7 @@ export class Game {
           e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
-        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260; e.dashCd = rand(1.8, 3.2); }
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 220 * clamp(this.playerPaceFactor, 0.8, 1.35); e.dashCd = rand(1.9, 3.4); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
