@@ -2586,20 +2586,21 @@ export class Game {
       const ax = a.x - this.camX - a.def.w / 2;
       ctx.fillStyle = "rgba(0,0,0,0.28)";
       ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
+      const bob = Math.sin(this.animTime * 8 + a.x * 0.04) * 2;
       ctx.fillStyle = a.def.color;
-      ctx.fillRect(ax + 3, a.y + 10, a.def.w - 6, a.def.h - 18);
+      ctx.fillRect(ax + 3, a.y + 10 + bob, a.def.w - 6, a.def.h - 18);
       ctx.fillStyle = a.def.accent;
-      ctx.fillRect(ax + 1, a.y + 8, a.def.w - 2, 4);
+      ctx.fillRect(ax + 1, a.y + 8 + bob, a.def.w - 2, 4);
       ctx.fillStyle = "#fff7d6";
-      ctx.fillRect(ax + 6, a.y + 2, a.def.w - 12, 8);
+      ctx.fillRect(ax + 6, a.y + 2 + bob, a.def.w - 12, 8);
       ctx.fillStyle = a.def.eye;
       const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
-      ctx.fillRect(eyeX, a.y + 5, 2, 2);
+      ctx.fillRect(eyeX, a.y + 5 + bob, 2, 2);
       ctx.fillStyle = a.def.accent;
-      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42, 10, 3);
-      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6, 6, 6); }
-      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2, a.def.w + 4, a.def.h + 4); }
-      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y, a.def.w - 12, 3); }
+      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
+      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12 + bob, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6 + bob, 6, 6); }
+      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2 + bob, a.def.w + 4, a.def.h + 4); ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, 7, 0, Math.PI * 2); ctx.stroke(); }
+      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y + bob, a.def.w - 12, 3); }
       ctx.fillStyle = "#111";
       ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
       ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
