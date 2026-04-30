@@ -1026,10 +1026,10 @@ export class Game {
     this.updateEnemies(dt);
     this.tickStatuses(dt);
 
-    // === Wave 10 spawn system: base 5 enemies / 5s, +6 every 666m, SON doubles.
+    // === Wave 10 spawn system: distance tiers, paced by actual player speed so waves match progress.
     {
-      const cap = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
-      const newTier = Math.min(cap, Math.floor(meters / 666));
+      const tierLimit = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
+      const newTier = Math.min(tierLimit, Math.floor(meters / 666));
       if (newTier > this.spawnTier) {
         for (let i = this.spawnTier + 1; i <= newTier; i++) {
           this.tideMessageCount++;
@@ -1041,16 +1041,25 @@ export class Game {
         }
         this.spawnTier = newTier;
       }
-      this.spawnAllowance = (5 + this.spawnTier * 6) * (this.difficulty === "son" ? 2 : 1);
-      this.spawnTimer -= dt * (1 + Math.min(2.5, Math.max(0, this.pvx) / Math.max(1, speed)));
+      const difficultyMul = this.difficulty === "dunce" ? 0.8 : this.difficulty === "son" ? 2 : 1;
+      const desiredWave = Math.round((5 + this.spawnTier * 6) * difficultyMul);
+      this.spawnAllowance = Math.max(3, desiredWave);
+      const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
+      const speedRatio = clamp(liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0, 1.8);
+      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.35 + speedRatio, 0.35, 1.65) : 0.08;
+      this.spawnTimer -= dt * spawnClock;
       const canSpawn = !this.inSafeZone;
       if (canSpawn && this.spawnTimer <= 0) {
-        const target = Math.min(90, this.spawnAllowance);
+        const screenCap = this.difficulty === "dunce" ? 12 : this.difficulty === "son" ? 42 : 24;
+        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.35, 0.65, 1.25))));
         const current = this.enemies.filter(e => !e.dying).length;
-        const burst = Math.max(1, Math.min(target - current, Math.ceil(target / 5)));
-        for (let i = 0; i < burst; i++) this.spawnEnemy();
-        this.enemiesSpawned += Math.max(0, burst);
-        this.spawnTimer = 1.0;
+        const openSlots = Math.max(0, target - current);
+        const burst = Math.min(openSlots, Math.max(1, Math.ceil(target / (this.difficulty === "son" ? 5 : 7))));
+        if (burst > 0) {
+          for (let i = 0; i < burst; i++) this.spawnEnemy();
+          this.enemiesSpawned += burst;
+        }
+        this.spawnTimer = clamp(1.15 - speedRatio * 0.28, 0.58, 1.45);
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
