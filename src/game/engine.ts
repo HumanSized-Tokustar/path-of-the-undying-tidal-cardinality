@@ -747,16 +747,17 @@ export class Game {
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
     speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
-    const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
-    this.playerPaceFactor = clamp(0.55 + liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0.65, 1.75);
-    this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
+    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
+    const liveMs = Math.abs(this.pvx) / PX_PER_METER;
+    const paceIntent = moveDir !== 0 ? 0.18 : 0;
+    this.playerPaceFactor = clamp(0.62 + liveMs / Math.max(PLAYER_BASE_MS, paceMs) + paceIntent, 0.72, 1.95);
+    this.animTime += dt * clamp(0.45 + this.playerPaceFactor * 0.75, 0.55, 1.85);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
     const conveyorPush = this.currentPlatform && PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx
       ? PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx! * (this.currentPlatform.conveyorDir)
       : 0;
 
-    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
     const accel = (this.pOnGround ? PLAYER_ACCEL : PLAYER_AIR_ACCEL) * clamp(friction, 0.35, 1.15);
     const decel = PLAYER_DECEL * clamp(friction, 0.25, 1.1);
     if (moveDir !== 0) {
@@ -775,9 +776,11 @@ export class Game {
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
       this.dashTime = DASH_DURATION;
       this.pInv = Math.max(this.pInv, DASH_DURATION);
-      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.pvx = this.pFacing * speed * (DASH_SPEED_MULT + 0.12);
+      this.pvy *= 0.72;
       this.spawnPuff(this.px + this.pw/2 - this.pFacing * 10, this.py + this.ph * 0.65, "#7be0ff");
       this.spawnPuff(this.px + this.pw/2 - this.pFacing * 18, this.py + this.ph * 0.45, "#ffffff");
+      for (let i = 0; i < 5; i++) this.particles.push({ x:this.px + this.pw/2 - this.pFacing * (12 + i * 5), y:this.py + 12 + i * 5, vx:-this.pFacing * rand(90, 220), vy:rand(-80, 60), life:0.22, max:0.22, color:i % 2 ? "#7be0ff" : "#ffffff", size:2 + (i % 2) });
       this.dashCharges--;
       if (this.dashRecharge <= 0) this.dashRecharge = DASH_RECHARGE;
     }
@@ -785,14 +788,16 @@ export class Game {
     const rollPressed = (this as any).rollPressed as boolean;
     if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
       this.rolling = true;
-      this.rollTime = 0.38;
+      this.rollTime = 0.42;
       this.pInv = Math.max(this.pInv, 0.38);
+      this.pvx = this.pFacing * speed * 1.38;
+      this.spawnPuff(this.px + this.pw/2, this.py + this.ph - 4, "#fff7d6");
       this.rollCharges--;
       if (this.rollRecharge <= 0) this.rollRecharge = 5;
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.pvx = this.pFacing * speed * (DASH_SPEED_MULT + 0.12);
       this.dashTime -= dt;
       if (this.dashTime <= 0) this.pvx = this.pFacing * speed * DASH_EXIT_CARRY;
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.24, max: 0.24, facing: this.pFacing });
@@ -800,7 +805,7 @@ export class Game {
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
       this.rollTime -= dt;
-      this.pvx = this.pFacing * speed * 1.25;
+      this.pvx = this.pFacing * speed * 1.34;
       // Knock enemies in path away
       const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
       for (const e of this.enemies) {
@@ -1635,21 +1640,22 @@ export class Game {
         const dist = Math.abs(dx);
         const dy = (this.py + this.ph/2) - (e.y + e.h/2);
         const fireMul = this.diffEnemyFire();
+        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.7 : 1.48);
 
         switch (e.type) {
           case "shanker":
-            e.vx = Math.sign(dx) * 130;
+            e.vx = Math.sign(dx) * 130 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && dy < -30 && dist < 200) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
             break;
           case "shankerSwift":
-            e.vx = Math.sign(dx) * 220;
+            e.vx = Math.sign(dx) * 220 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && (Math.random() < 0.02 || dy < -20) && dist < 220) { e.vy = -540; e.onGround = false; e.jumpCd = 0.9; }
             break;
           case "shooter":
             // strafe in/out of optimal range
-            if (dist > 320) e.vx = Math.sign(dx) * 90;
+            if (dist > 320) e.vx = Math.sign(dx) * 90 * paceCatchup;
             else if (dist < 180) e.vx = -Math.sign(dx) * 90;
-            else e.vx = Math.sin(this.timeAlive * 2 + e.x * 0.01) * 50;
+            else e.vx = Math.sin(this.timeAlive * 2 + e.x * 0.01) * 50 * paceCatchup;
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 460) {
               e.fireCd = rand(1.0, 1.8) * fireMul;
@@ -1658,9 +1664,9 @@ export class Game {
             if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.01) { e.vy = -480; e.onGround = false; e.jumpCd = 1.5; }
             break;
           case "shooterElite":
-            if (dist > 320) e.vx = Math.sign(dx) * 110;
+            if (dist > 320) e.vx = Math.sign(dx) * 110 * paceCatchup;
             else if (dist < 200) e.vx = -Math.sign(dx) * 100;
-            else e.vx = Math.sin(this.timeAlive * 3) * 60;
+            else e.vx = Math.sin(this.timeAlive * 3) * 60 * paceCatchup;
             e.fireCd -= dt; e.burstCd -= dt;
             if (e.burstLeft > 0 && e.burstCd <= 0) {
               this.spawnEnemyBullet(e, 480, 10);
@@ -1671,7 +1677,7 @@ export class Game {
             if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.02) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
             break;
           case "brute":
-            e.vx = Math.sign(dx) * 60;
+            e.vx = Math.sign(dx) * 60 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && dist < 80 && dy < -10) { e.vy = -560; e.onGround = false; e.jumpCd = 1.5; }
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 380) {
@@ -1680,7 +1686,7 @@ export class Game {
             }
             break;
           case "bruteHeavy":
-            e.vx = Math.sign(dx) * 40;
+            e.vx = Math.sign(dx) * 40 * paceCatchup;
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 220 && e.onGround) {
               e.fireCd = 3.0 * fireMul;
@@ -1819,13 +1825,18 @@ export class Game {
             }
           }
         }
-        // All enemies can double-jump and short dash.
-        if (e.onGround) e.jumpsLeft = 2;
-        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < 0.012 * espd || Math.abs(dyToPlayer) > 60)) {
-          e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
+        // All enemies can multi-jump and short dash to stay in the same pace band as the player.
+        if (e.onGround) e.jumpsLeft = this.difficulty === "son" ? 4 : 3;
+        const jumpNeed = Math.abs(dyToPlayer) > 42 || Math.abs((this.px + this.pw/2) - e.x) > 260;
+        const jumpChance = (0.018 + (this.playerPaceFactor - 0.7) * 0.018) * espd;
+        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < jumpChance || jumpNeed)) {
+          e.vy = -520 - clamp(this.playerPaceFactor - 1, 0, 1) * 90;
+          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 80 * clamp(this.playerPaceFactor, 0.9, 1.7);
+          e.onGround = false; e.jumpCd = clamp(0.62 / this.playerPaceFactor, 0.38, 0.9); e.jumpsLeft = (e.jumpsLeft ?? 3) - 1;
+          this.spawnPuff(e.x, e.y + e.h, "#ff8c42");
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
-        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 220 * clamp(this.playerPaceFactor, 0.8, 1.35); e.dashCd = rand(1.9, 3.4); }
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 420) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260 * clamp(this.playerPaceFactor, 0.85, 1.65); e.dashCd = rand(1.35, 2.8) / clamp(this.playerPaceFactor, 0.9, 1.5); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
@@ -1923,13 +1934,18 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
+      const allyPace = clamp(0.9 + this.playerPaceFactor * 0.45, 1.0, 1.85);
       const target = this.enemies
         .filter(e => !e.dying)
         .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
       if (target) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        const followSpeed = a.def.speed * 26;
+        const followSpeed = a.def.speed * 26 * allyPace;
         a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        if (Math.abs(target.y - a.y) > 46 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
+          a.vy = -470 * clamp(allyPace, 1, 1.45);
+          this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
+        }
         if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
         a.fireCd -= dt; a.specialCd -= dt;
         if (Math.abs(dx) < 520 && a.fireCd <= 0) {
@@ -1942,7 +1958,8 @@ export class Game {
       } else {
         const dx = leashX - a.x;
         a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22);
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22 * allyPace);
+        if (Math.abs(dx) > 520) { a.x = this.px - this.pFacing * 70; a.y = Math.min(a.y, this.py + 8); this.spawnPuff(a.x, a.y + a.def.h, a.def.accent); }
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
@@ -2009,6 +2026,11 @@ export class Game {
         });
         src = next;
       }
+    }
+    const owned = this.inventory.augments.filter(a => a.startsWith(`${weaponId}:`)).length;
+    if (owned > 0) {
+      const col = this.hasStatusOnWeapon(weaponId, "fire") ? "#ff6a00" : this.hasStatusOnWeapon(weaponId, "freeze") ? "#9ed6ff" : this.hasStatusOnWeapon(weaponId, "lightning") ? "#ffffff" : "#d97bff";
+      for (let i = 0; i < owned + 2; i++) this.particles.push({ x:e.x + rand(-e.w/2, e.w/2), y:e.y + rand(0, e.h), vx:rand(-40, 40), vy:rand(-90, -20), life:0.34, max:0.34, color:col, size:2 });
     }
   }
   private tickStatuses(dt: number) {
@@ -2522,8 +2544,23 @@ export class Game {
     // Bullets
     for (const b of this.bullets) {
       const sx = b.x - this.camX;
+      const trailLen = clamp(Math.hypot(b.vx, b.vy) / 95, 4, 18);
+      if (b.friendly) {
+        ctx.globalAlpha = 0.32;
+        ctx.fillStyle = b.color;
+        ctx.fillRect(sx - Math.sign(b.vx || 1) * trailLen, b.y - 1, trailLen, 2);
+        ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = b.color;
-      ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      if (b.kind === "napalm") {
+        ctx.beginPath(); ctx.arc(sx, b.y, b.r + Math.sin(this.animTime * 18) * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffb347"; ctx.fillRect(sx - 2, b.y - 2, 4, 4);
+      } else if (b.kind === "oil") {
+        ctx.fillRect(sx - b.r, b.y - b.r / 2, b.r * 2, b.r);
+        ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.fillRect(sx - 2, b.y - 2, 3, 1);
+      } else {
+        ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      }
       if (b.r >= 6) { ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 2, b.y - 2, 4, 4); }
     }
 
@@ -2549,20 +2586,21 @@ export class Game {
       const ax = a.x - this.camX - a.def.w / 2;
       ctx.fillStyle = "rgba(0,0,0,0.28)";
       ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
+      const bob = Math.sin(this.animTime * 8 + a.x * 0.04) * 2;
       ctx.fillStyle = a.def.color;
-      ctx.fillRect(ax + 3, a.y + 10, a.def.w - 6, a.def.h - 18);
+      ctx.fillRect(ax + 3, a.y + 10 + bob, a.def.w - 6, a.def.h - 18);
       ctx.fillStyle = a.def.accent;
-      ctx.fillRect(ax + 1, a.y + 8, a.def.w - 2, 4);
+      ctx.fillRect(ax + 1, a.y + 8 + bob, a.def.w - 2, 4);
       ctx.fillStyle = "#fff7d6";
-      ctx.fillRect(ax + 6, a.y + 2, a.def.w - 12, 8);
+      ctx.fillRect(ax + 6, a.y + 2 + bob, a.def.w - 12, 8);
       ctx.fillStyle = a.def.eye;
       const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
-      ctx.fillRect(eyeX, a.y + 5, 2, 2);
+      ctx.fillRect(eyeX, a.y + 5 + bob, 2, 2);
       ctx.fillStyle = a.def.accent;
-      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42, 10, 3);
-      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6, 6, 6); }
-      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2, a.def.w + 4, a.def.h + 4); }
-      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y, a.def.w - 12, 3); }
+      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
+      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12 + bob, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6 + bob, 6, 6); }
+      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2 + bob, a.def.w + 4, a.def.h + 4); ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, 7, 0, Math.PI * 2); ctx.stroke(); }
+      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y + bob, a.def.w - 12, 3); }
       ctx.fillStyle = "#111";
       ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
       ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
@@ -3002,10 +3040,14 @@ export class Game {
     ctx.fillRect(eyeX - 1, e.y + 7, 4, 4);
 
     // Type-specific accents
+    if (!e.flying && Math.abs(e.vx) > 80 && Math.random() < 0.08) {
+      this.particles.push({ x:e.x - e.facing * e.w/2, y:e.y + e.h, vx:-e.facing * rand(20, 70), vy:rand(-30, -5), life:0.24, max:0.24, color:"#8a6a42", size:2 });
+    }
     if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
       ctx.fillStyle = "#222";
       if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 12, 3);
       else ctx.fillRect(sx - 12, e.y + e.h * 0.45, 12, 3);
+      if (e.fireCd < 0.25) { ctx.fillStyle = "#fff199"; ctx.fillRect(e.facing > 0 ? sx + e.w + 12 : sx - 14, e.y + e.h * 0.45 - 1, 3, 5); }
     }
     if (e.type === "shanker" || e.type === "shankerSwift") {
       // Hood
