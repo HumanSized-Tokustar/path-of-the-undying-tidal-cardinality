@@ -1955,7 +1955,8 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
-      const allyPace = clamp(0.95 + this.playerPaceFactor * 0.55, 1.05, 2.05);
+      // Wave 12: ally pace tracks player pace fully + bonus so allies always keep up.
+      const allyPace = clamp(1.15 + this.playerPaceFactor * 0.85, 1.25, 2.85) * Math.max(1, this.paceMult * 0.9);
 
       // Find best target within engagement range; otherwise stick with player.
       const ENGAGE_RANGE = 700;
