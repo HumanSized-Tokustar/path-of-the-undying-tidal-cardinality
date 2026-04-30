@@ -3,7 +3,7 @@
 import type { WeaponId } from "./weapons";
 
 export type Currency = "coins" | "tokens" | "crystals";
-export type ShopCategory = "ranged" | "melee" | "misc" | "stat";
+export type ShopCategory = "ranged" | "melee" | "misc" | "stat" | "general";
 
 export interface ShopItem {
   id: string;
@@ -19,6 +19,7 @@ export interface ShopItem {
   ammo?: number;
   revive?: number;
   dash?: number;
+  roll?: number;
   limit?: number;
   color: string;
   visual: string;
@@ -69,6 +70,11 @@ export const MAIN_SHOP: ShopItem[] = [
   { id:"buy_lightrod", name:"Lightning Rod", cost:3000, currency:"coins", category:"misc", weapon:"lightning_rod", limit:10, color:"#7be0ff", visual:"Tesla stick", desc:"Place on ground. Continuous lightning. Chains with other rods. 15 DMG per 0.89s." },
   { id:"buy_disco", name:"Disco Bomb", cost:4000, currency:"coins", category:"misc", weapon:"disco_bomb", limit:10, color:"#ff4fd8", visual:"Multicolored ball", desc:"Enemies jump dance and cannot attack for 6s." },
   { id:"buy_dshield", name:"Disposable Shield", cost:3000, currency:"coins", category:"misc", weapon:"disposable_shield", limit:10, color:"#3b82f6", visual:"Black and blue shield", desc:"Creates 10s barrier blocking all attacks." },
+  { id:"buy_more_ammo", name:"More Ammo (+50)", cost:1000, currency:"coins", category:"general", ammo:50, color:"#ffd84a", visual:"Yellow ammo strip", desc:"Instantly gain 50 ammo." },
+  { id:"buy_ammo_box", name:"Ammo Box (+167)", cost:2500, currency:"coins", category:"general", ammo:167, color:"#ffb347", visual:"Large orange ammo crate", desc:"Instantly gain 167 ammo." },
+  { id:"buy_extra_dash", name:"Extra Dash", cost:5000, currency:"coins", category:"general", dash:1, limit:1, color:"#7be0ff", visual:"Cyan speed icon", desc:"Gain one extra dash charge. Buy once." },
+  { id:"buy_extra_roll", name:"Extra Roll", cost:5000, currency:"coins", category:"general", roll:1, limit:1, color:"#9ed6ff", visual:"Silver tumble icon", desc:"Gain one extra roll charge. Buy once." },
+  { id:"buy_revive", name:"Revive", cost:8888, currency:"coins", category:"general", revive:1, limit:2, color:"#ff8c42", visual:"Orange phoenix spark", desc:"Gain one extra life. Buy up to 2 times." },
   { id:"buy_obliterator", name:"Obliterator Ray", cost:9999999, currency:"coins", category:"misc", weapon:"obliterator_ray", limit:10, color:"#ffffff", visual:"Big white line with infinity sign", desc:"Unstoppable ray. 999999999 DMG. 3s CD." },
 ];
 
