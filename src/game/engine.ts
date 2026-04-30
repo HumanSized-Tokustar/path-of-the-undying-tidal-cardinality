@@ -2544,8 +2544,23 @@ export class Game {
     // Bullets
     for (const b of this.bullets) {
       const sx = b.x - this.camX;
+      const trailLen = clamp(Math.hypot(b.vx, b.vy) / 95, 4, 18);
+      if (b.friendly) {
+        ctx.globalAlpha = 0.32;
+        ctx.fillStyle = b.color;
+        ctx.fillRect(sx - Math.sign(b.vx || 1) * trailLen, b.y - 1, trailLen, 2);
+        ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = b.color;
-      ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      if (b.kind === "napalm") {
+        ctx.beginPath(); ctx.arc(sx, b.y, b.r + Math.sin(this.animTime * 18) * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffb347"; ctx.fillRect(sx - 2, b.y - 2, 4, 4);
+      } else if (b.kind === "oil") {
+        ctx.fillRect(sx - b.r, b.y - b.r / 2, b.r * 2, b.r);
+        ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.fillRect(sx - 2, b.y - 2, 3, 1);
+      } else {
+        ctx.fillRect(sx - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      }
       if (b.r >= 6) { ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 2, b.y - 2, 4, 4); }
     }
 
