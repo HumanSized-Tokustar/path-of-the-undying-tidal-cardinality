@@ -2036,8 +2036,8 @@ export class Game {
           a.vy = -480 * clamp(allyPace, 1, 1.5);
         }
         // Tight teleport leash so they never get left behind.
-        if (Math.abs(dx) > 380 || a.x < this.camX - 60 || a.x > this.camX + W + 60) {
-          a.x = this.px - this.pFacing * 70;
+        if (Math.abs(dx) > 280 || a.x < this.camX - 40 || a.x > this.camX + W + 40) {
+          a.x = this.px - this.pFacing * 60;
           a.y = Math.min(a.y, this.py + 8);
           this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
         }
