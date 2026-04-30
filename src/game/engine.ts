@@ -532,6 +532,32 @@ export class Game {
     }
   }
   currentShopKind: ShopKind | null = null;
+  canBuyMainItem(id: string) {
+    const it = MAIN_SHOP.find(x => x.id === id); if (!it) return false;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (it.limit && bought >= it.limit) return false;
+    if (it.weapon && it.limit === 1 && this.inventory.owned.includes(it.weapon)) return false;
+    if (it.revive && this.reviveBuys >= 2) return false;
+    return true;
+  }
+  canBuyAugment(id: string) {
+    const a = AUGMENT_SHOP.find(x => x.id === id); if (!a) return false;
+    const bought = this.purchaseCounts[id] ?? 0;
+    if (a.limit && bought >= a.limit) return false;
+    if (!a.limit && this.inventory.augments.includes(id)) return false;
+    if (a.stat === "maxhp" && this.maxHpBonusBought >= 500) return false;
+    if (a.stat === "revive" && this.reviveBuys >= 2) return false;
+    return true;
+  }
+  activeWeaponStatusCount() {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    return this.inventory.augments.filter(a => a.startsWith(`${wid}:`)).length;
+  }
+  canBuyStatusAugment(statusId: string) {
+    const wid = this.inventory.ranged[this.inventory.activeRanged];
+    const key = `${wid}:${statusId}`;
+    return !this.inventory.augments.includes(key) && this.activeWeaponStatusCount() < 3;
+  }
   toggleShop() {
     if (this.phase === "shop") { this.resume(); return; }
     if (this.phase !== "playing") return;
