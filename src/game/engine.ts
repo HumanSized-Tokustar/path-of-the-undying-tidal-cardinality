@@ -19,8 +19,8 @@ const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
 const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
-const PLAYER_BASE_MS = 8.4;
-const PLAYER_MAX_MS = 24;
+const PLAYER_BASE_MS = 9.2;
+const PLAYER_MAX_MS = 26;
 const PLAYER_ACCEL = 2150;
 const PLAYER_AIR_ACCEL = 1380;
 const PLAYER_DECEL = 2400;
@@ -954,7 +954,9 @@ export class Game {
       const w = WEAPONS[this.inventory.melee];
       this.fireCdM = w.fireCd;
       this.meleeSwing = 1;
-      const dmg = w.dmg * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
+      // Wave 12 buff: melee class now near-instakill (massive base multiplier)
+      const meleeBuffMul = w.id === "knife" ? 25 : w.id === "katana" ? 30 : w.id === "yamato" ? 40 : w.id === "gauntlet" ? 35 : 20;
+      const dmg = w.dmg * meleeBuffMul * (this.odActive ? 2 : 1) * (this.puDamage > 0 ? 2 : 1);
       const reach = w.id === "yamato" ? 92 : w.id === "katana" ? 82 : w.id === "gauntlet" ? 58 : 60;
       this.enemies.forEach(e => {
         if (Math.sign(e.x - this.px) === this.pFacing &&
@@ -1051,6 +1053,9 @@ export class Game {
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.gravity ?? 600) * dt;
       return p.life > 0;
     });
+    // Wave 12 perf cap: prevent particle storms from crashing the tab.
+    if (this.particles.length > 600) this.particles.splice(0, this.particles.length - 600);
+    if (this.bullets.length > 400) this.bullets.splice(0, this.bullets.length - 400);
 
     this.pickups = this.pickups.filter(p => {
       p.life -= dt;
@@ -1953,7 +1958,8 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
-      const allyPace = clamp(0.95 + this.playerPaceFactor * 0.55, 1.05, 2.05);
+      // Wave 12: ally pace tracks player pace fully + bonus so allies always keep up.
+      const allyPace = clamp(1.15 + this.playerPaceFactor * 0.85, 1.25, 2.85) * Math.max(1, this.paceMult * 0.9);
 
       // Find best target within engagement range; otherwise stick with player.
       const ENGAGE_RANGE = 700;
@@ -2033,8 +2039,8 @@ export class Game {
           a.vy = -480 * clamp(allyPace, 1, 1.5);
         }
         // Tight teleport leash so they never get left behind.
-        if (Math.abs(dx) > 380 || a.x < this.camX - 60 || a.x > this.camX + W + 60) {
-          a.x = this.px - this.pFacing * 70;
+        if (Math.abs(dx) > 280 || a.x < this.camX - 40 || a.x > this.camX + W + 40) {
+          a.x = this.px - this.pFacing * 60;
           a.y = Math.min(a.y, this.py + 8);
           this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
         }
