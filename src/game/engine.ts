@@ -2022,12 +2022,12 @@ export class Game {
     if (Math.random() < 0.015) this.pickups.push({ x: e.x - 8, y: e.y, vy: -260, type: "crystal", value: randi(1, 5), life: 12 });
   }
 
-  private explode(x: number, y: number, dmg: number, radius: number) {
+  private explode(x: number, y: number, dmg: number, radius: number, source?: WeaponId | "ally" | "hazard" | "player") {
     this.screenShake = Math.max(this.screenShake, 8);
     this.enemies.forEach(e => {
       if (e.dying) return;
       const dx = e.x - x, dy = e.y - y;
-      if (dx*dx + dy*dy < radius*radius) this.damageEnemy(e, dmg);
+      if (dx*dx + dy*dy < radius*radius) this.damageEnemy(e, dmg, source);
     });
     for (let i = 0; i < 24; i++) this.particles.push({
       x, y, vx: rand(-340, 340), vy: rand(-340, -40),
