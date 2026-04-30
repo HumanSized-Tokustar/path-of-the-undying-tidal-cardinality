@@ -2653,28 +2653,117 @@ export class Game {
     // Friendly allies
     for (const a of this.allies) {
       const ax = a.x - this.camX - a.def.w / 2;
+      // Soft aura ring so allies stand out from enemies
+      ctx.globalAlpha = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(this.animTime * 4 + a.x * 0.05));
+      ctx.fillStyle = a.def.accent;
+      ctx.beginPath();
+      ctx.arc(ax + a.def.w / 2, a.y + a.def.h / 2, a.def.w * 0.95, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Shadow
       ctx.fillStyle = "rgba(0,0,0,0.28)";
       ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
       const bob = Math.sin(this.animTime * 8 + a.x * 0.04) * 2;
+      const attacking = a.fireCd > (a.def.id === "ally_lil_one" ? 0.35 : 0.55);
+
+      // Body
       ctx.fillStyle = a.def.color;
       ctx.fillRect(ax + 3, a.y + 10 + bob, a.def.w - 6, a.def.h - 18);
       ctx.fillStyle = a.def.accent;
       ctx.fillRect(ax + 1, a.y + 8 + bob, a.def.w - 2, 4);
+      // Head
       ctx.fillStyle = "#fff7d6";
       ctx.fillRect(ax + 6, a.y + 2 + bob, a.def.w - 12, 8);
       ctx.fillStyle = a.def.eye;
       const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
       ctx.fillRect(eyeX, a.y + 5 + bob, 2, 2);
-      ctx.fillStyle = a.def.accent;
-      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
-      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12 + bob, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6 + bob, 6, 6); }
-      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2 + bob, a.def.w + 4, a.def.h + 4); ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, 7, 0, Math.PI * 2); ctx.stroke(); }
-      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y + bob, a.def.w - 12, 3); }
+
+      // Per-type details
+      if (a.def.id === "ally_lil_one") {
+        // Tiny held sword that swings on attack
+        const swing = attacking ? Math.sin(this.animTime * 18) * 0.9 : 0;
+        const sx0 = a.facing > 0 ? ax + a.def.w - 2 : ax + 2;
+        ctx.save();
+        ctx.translate(sx0, a.y + a.def.h * 0.55 + bob);
+        ctx.rotate(swing * a.facing);
+        ctx.fillStyle = "#d8e2ff"; ctx.fillRect(0, -1, a.facing > 0 ? 10 : -10, 2);
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(0, -2, a.facing > 0 ? 2 : -2, 4);
+        ctx.restore();
+      }
+      if (a.def.id === "ally_sheriff") {
+        // Wide cowboy hat brim + crown
+        ctx.fillStyle = "#3a2a10";
+        ctx.fillRect(ax + 2, a.y + bob, a.def.w - 4, 2);
+        ctx.fillRect(ax + 7, a.y - 3 + bob, a.def.w - 14, 3);
+        // Star badge
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(ax + a.def.w / 2 - 2, a.y + 14 + bob, 3, 3);
+        // Revolver
+        ctx.fillStyle = "#222";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w + 7 : ax - 9, a.y + a.def.h * 0.4 + bob, 2, 2);
+        // Muzzle flash on shot
+        if (attacking) {
+          ctx.fillStyle = "#fff199";
+          ctx.fillRect(a.facing > 0 ? ax + a.def.w + 10 : ax - 14, a.y + a.def.h * 0.4 + bob, 4, 4);
+        }
+      }
+      if (a.def.id === "ally_eradidog") {
+        // 4 legs animated
+        const lp = Math.sin(this.animTime * 14);
+        ctx.fillStyle = "#3a2a10";
+        ctx.fillRect(ax + 4, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, lp) * 2);
+        ctx.fillRect(ax + 12, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, -lp) * 2);
+        ctx.fillRect(ax + a.def.w - 16, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, lp) * 2);
+        ctx.fillRect(ax + a.def.w - 8, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, -lp) * 2);
+        // Rocket on back (black)
+        ctx.fillStyle = "#111";
+        ctx.fillRect(ax + 4, a.y + 4 + bob, a.def.w - 8, 5);
+        ctx.fillStyle = "#ff3a3a";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w - 6 : ax + 2, a.y + 5 + bob, 4, 3);
+        // Rocket exhaust
+        if (Math.abs(a.vx) > 60 && Math.random() < 0.4) {
+          this.spawnPuff(a.x - a.facing * 14, a.y + 8 + bob, "#ff8c42");
+        }
+      }
+      if (a.def.id === "ally_stalien") {
+        // Pulsing orbital ring
+        const pr = 7 + Math.sin(this.animTime * 5) * 2;
+        ctx.strokeStyle = "#7be0ff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, pr, 0, Math.PI * 2); ctx.stroke();
+        // Antenna
+        ctx.fillStyle = "#6ee7b7";
+        ctx.fillRect(ax + a.def.w / 2 - 1, a.y - 4 + bob, 2, 4);
+        // Blinking tip
+        if (Math.floor(this.animTime * 6) % 2 === 0) {
+          ctx.fillStyle = "#fff"; ctx.fillRect(ax + a.def.w / 2 - 1, a.y - 6 + bob, 2, 2);
+        }
+        // Outline
+        ctx.strokeStyle = "rgba(123,224,255,0.6)"; ctx.lineWidth = 1;
+        ctx.strokeRect(ax - 1, a.y - 1 + bob, a.def.w + 2, a.def.h + 2);
+      }
+      if (a.def.id === "ally_dude") {
+        // Red cap brim + crown
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(ax + 4, a.y - 1 + bob, a.def.w - 8, 3);
+        ctx.fillRect(ax + 8, a.y - 4 + bob, a.def.w - 16, 3);
+        // Fist trail when attacking
+        if (attacking) {
+          ctx.fillStyle = "rgba(239,68,68,0.6)";
+          for (let i = 1; i <= 3; i++) {
+            ctx.fillRect(ax - a.facing * (4 + i * 4), a.y + a.def.h * 0.5 + bob, 3, 3);
+          }
+        }
+      }
+
+      // Boots
       ctx.fillStyle = "#111";
       ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
       ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
+      // Lifespan bar
       ctx.fillStyle = "rgba(123,255,138,0.9)";
-      ctx.fillRect(ax, a.y - 6, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
+      ctx.fillRect(ax, a.y - 8, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
     }
 
     // Particles
