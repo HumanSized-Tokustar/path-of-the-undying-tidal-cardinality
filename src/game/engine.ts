@@ -960,8 +960,14 @@ export class Game {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
           this.damageEnemy(e, dmg, w.id);
-          if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
-          if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
+          if (w.id === "yamato") {
+            e.vy = -160; e.disabled = Math.max(e.disabled, 0.8);
+            for (let i = 0; i < 4; i++) this.particles.push({ x: e.x, y: e.y + e.h * 0.3, vx: rand(-30, 30), vy: rand(-180, -60), life: 0.5, max: 0.5, color: "#ffd84a", size: 2 });
+          }
+          if (w.id === "gauntlet") {
+            e.vx = this.pFacing * 580; e.vy = -200;
+            for (let i = 0; i < 6; i++) this.particles.push({ x: e.x, y: e.y + e.h * 0.5, vx: this.pFacing * rand(80, 280), vy: rand(-80, 40), life: 0.4, max: 0.4, color: "#ff8c42", size: 2 });
+          }
         }
       });
       audio.play("slash");
