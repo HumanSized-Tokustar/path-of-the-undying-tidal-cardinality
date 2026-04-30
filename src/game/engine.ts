@@ -1825,13 +1825,18 @@ export class Game {
             }
           }
         }
-        // All enemies can double-jump and short dash.
-        if (e.onGround) e.jumpsLeft = 2;
-        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < 0.012 * espd || Math.abs(dyToPlayer) > 60)) {
-          e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
+        // All enemies can multi-jump and short dash to stay in the same pace band as the player.
+        if (e.onGround) e.jumpsLeft = this.difficulty === "son" ? 4 : 3;
+        const jumpNeed = Math.abs(dyToPlayer) > 42 || Math.abs((this.px + this.pw/2) - e.x) > 260;
+        const jumpChance = (0.018 + (this.playerPaceFactor - 0.7) * 0.018) * espd;
+        if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < jumpChance || jumpNeed)) {
+          e.vy = -520 - clamp(this.playerPaceFactor - 1, 0, 1) * 90;
+          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 80 * clamp(this.playerPaceFactor, 0.9, 1.7);
+          e.onGround = false; e.jumpCd = clamp(0.62 / this.playerPaceFactor, 0.38, 0.9); e.jumpsLeft = (e.jumpsLeft ?? 3) - 1;
+          this.spawnPuff(e.x, e.y + e.h, "#ff8c42");
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
-        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 220 * clamp(this.playerPaceFactor, 0.8, 1.35); e.dashCd = rand(1.9, 3.4); }
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 420) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260 * clamp(this.playerPaceFactor, 0.85, 1.65); e.dashCd = rand(1.35, 2.8) / clamp(this.playerPaceFactor, 0.9, 1.5); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
