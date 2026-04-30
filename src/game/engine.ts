@@ -19,15 +19,15 @@ const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
 const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
-const PLAYER_BASE_MS = 7.2;
-const PLAYER_MAX_MS = 21;
-const PLAYER_ACCEL = 1850;
-const PLAYER_AIR_ACCEL = 1220;
+const PLAYER_BASE_MS = 8.4;
+const PLAYER_MAX_MS = 24;
+const PLAYER_ACCEL = 2150;
+const PLAYER_AIR_ACCEL = 1380;
 const PLAYER_DECEL = 2400;
 const DASH_DURATION = 0.22;
-const DASH_RECHARGE = 2.35;
-const DASH_SPEED_MULT = 2.2;
-const DASH_EXIT_CARRY = 0.68;
+const DASH_RECHARGE = 2.0;
+const DASH_SPEED_MULT = 2.5;
+const DASH_EXIT_CARRY = 0.72;
 
 const COLOR = {
   ground: "#3b2a1a",
@@ -960,8 +960,14 @@ export class Game {
         if (Math.sign(e.x - this.px) === this.pFacing &&
             Math.abs(e.x - this.px) < reach && Math.abs(e.y - this.py) < 55) {
           this.damageEnemy(e, dmg, w.id);
-          if (w.id === "yamato") { e.vy = -120; e.disabled = Math.max(e.disabled, 0.6); }
-          if (w.id === "gauntlet") { e.vx = this.pFacing * 520; e.vy = -180; }
+          if (w.id === "yamato") {
+            e.vy = -160; e.disabled = Math.max(e.disabled, 0.8);
+            for (let i = 0; i < 4; i++) this.particles.push({ x: e.x, y: e.y + e.h * 0.3, vx: rand(-30, 30), vy: rand(-180, -60), life: 0.5, max: 0.5, color: "#ffd84a", size: 2 });
+          }
+          if (w.id === "gauntlet") {
+            e.vx = this.pFacing * 580; e.vy = -200;
+            for (let i = 0; i < 6; i++) this.particles.push({ x: e.x, y: e.y + e.h * 0.5, vx: this.pFacing * rand(80, 280), vy: rand(-80, 40), life: 0.4, max: 0.4, color: "#ff8c42", size: 2 });
+          }
         }
       });
       audio.play("slash");
@@ -1083,25 +1089,31 @@ export class Game {
         }
         this.spawnTier = newTier;
       }
-      const difficultyMul = this.difficulty === "dunce" ? 0.8 : this.difficulty === "son" ? 2 : 1;
-      const desiredWave = Math.round((5 + this.spawnTier * 6) * difficultyMul);
+      // Per-difficulty spawn shape
+      const diffSpawn = this.difficulty === "dunce"
+        ? { base: 4, step: 3, cap: 8, intMin: 1.4, intMax: 1.8 }
+        : this.difficulty === "son"
+        ? { base: 10, step: 8, cap: 36, intMin: 0.42, intMax: 1.2 }
+        : { base: 6, step: 5, cap: 18, intMin: 0.55, intMax: 1.5 };
+      const desiredWave = diffSpawn.base + this.spawnTier * diffSpawn.step;
       this.spawnAllowance = Math.max(3, desiredWave);
       const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
       const speedRatio = clamp(liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0, 1.8);
-      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.35 + speedRatio, 0.35, 1.65) : 0.08;
+      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.4 + speedRatio * 1.2, 0.4, 2.1) : 0.08;
       this.spawnTimer -= dt * spawnClock;
       const canSpawn = !this.inSafeZone;
       if (canSpawn && this.spawnTimer <= 0) {
-        const screenCap = this.difficulty === "dunce" ? 12 : this.difficulty === "son" ? 42 : 24;
-        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.35, 0.65, 1.25))));
+        const screenCap = diffSpawn.cap;
+        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.4, 0.65, 1.35))));
         const current = this.enemies.filter(e => !e.dying).length;
         const openSlots = Math.max(0, target - current);
-        const burst = Math.min(openSlots, Math.max(1, Math.ceil(target / (this.difficulty === "son" ? 5 : 7))));
+        const minBurst = speedRatio > 1.2 ? 2 : 1;
+        const burst = Math.min(openSlots, Math.max(minBurst, Math.ceil(target / (this.difficulty === "son" ? 4 : 6))));
         if (burst > 0) {
           for (let i = 0; i < burst; i++) this.spawnEnemy();
           this.enemiesSpawned += burst;
         }
-        this.spawnTimer = clamp(1.15 - speedRatio * 0.28, 0.58, 1.45);
+        this.spawnTimer = clamp(diffSpawn.intMax - speedRatio * 0.35, diffSpawn.intMin, diffSpawn.intMax);
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
@@ -1245,8 +1257,12 @@ export class Game {
       if (w.id === "medkit") this.useMedkit();
       else if (w.id === "shockwave") {
         this.hazards.push({ kind:"shockwave", x:this.px + this.pFacing * 35, y:GROUND_Y, life:0.45 });
-        this.pvx += this.pFacing * 360; this.pvy = -380;
-        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 180) { e.vx += this.pFacing * 420; e.vy = -420; }
+        // Force player leap
+        this.pvx = this.pFacing * 540;
+        this.pvy = -460;
+        this.pOnGround = false;
+        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 200) { e.vx += this.pFacing * 480; e.vy = -460; e.onGround = false; }
+        for (let i = 0; i < 14; i++) this.particles.push({ x: this.px + this.pw/2, y: this.py + this.ph, vx: rand(-200, 200), vy: rand(-260, -40), life: 0.6, max: 0.6, color: "#9ed6ff", size: 3 });
         this.flashDescription("SHOCKWAVE — everything leaps forward");
       } else if (w.id === "lightning_rod") {
         this.hazards.push({ kind:"lightning", x:this.px + this.pFacing * 45, y:GROUND_Y, life:10, cd:0 });
@@ -1256,6 +1272,8 @@ export class Game {
         this.flashDescription("DISPOSABLE SHIELD — 10s barrier");
       } else if (w.id === "obliterator_ray") {
         this.hazards.push({ kind:"ray", x:this.px + this.pw/2, y:this.py + this.ph*0.4, life:0.25 });
+        this.parryFlash = Math.max(this.parryFlash, 0.5);
+        this.screenShake = Math.max(this.screenShake, 10);
         for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
         this.flashDescription("OBLITERATOR RAY ∞");
       }
@@ -1532,7 +1550,8 @@ export class Game {
 
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
-    const spawnX = this.camX + W + rand(40, 200);
+    const leadOffset = clamp(this.pvx * 0.35, 0, 540);
+    const spawnX = this.camX + W + 60 + leadOffset + rand(20, 160);
 
     const pool: EnemyType[] = ["shooter", "shanker"];
     if (meters > 150) pool.push("brute");
@@ -1640,7 +1659,7 @@ export class Game {
         const dist = Math.abs(dx);
         const dy = (this.py + this.ph/2) - (e.y + e.h/2);
         const fireMul = this.diffEnemyFire();
-        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.7 : 1.48);
+        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.85 : 1.6);
 
         switch (e.type) {
           case "shanker":
@@ -1775,7 +1794,7 @@ export class Game {
         }
       }
 
-      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.22, 0.75, this.difficulty === "son" ? 1.45 : 1.28);
+      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.26, 0.75, this.difficulty === "son" ? 1.55 : 1.4);
       if (!e.flying && !e.thrown) {
         // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
         let onLadder: Platform | null = null;
@@ -1825,14 +1844,14 @@ export class Game {
             }
           }
         }
-        // All enemies can multi-jump and short dash to stay in the same pace band as the player.
-        if (e.onGround) e.jumpsLeft = this.difficulty === "son" ? 4 : 3;
-        const jumpNeed = Math.abs(dyToPlayer) > 42 || Math.abs((this.px + this.pw/2) - e.x) > 260;
-        const jumpChance = (0.018 + (this.playerPaceFactor - 0.7) * 0.018) * espd;
+        // Enemies multi-jump and short dash to keep pace, but with nerfed frequency/impulse.
+        if (e.onGround) e.jumpsLeft = this.difficulty === "dunce" ? 1 : this.difficulty === "son" ? 3 : 2;
+        const jumpNeed = Math.abs(dyToPlayer) > 50 || Math.abs((this.px + this.pw/2) - e.x) > 320;
+        const jumpChance = (0.009 + Math.max(0, this.playerPaceFactor - 0.7) * 0.009) * espd;
         if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < jumpChance || jumpNeed)) {
-          e.vy = -520 - clamp(this.playerPaceFactor - 1, 0, 1) * 90;
-          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 80 * clamp(this.playerPaceFactor, 0.9, 1.7);
-          e.onGround = false; e.jumpCd = clamp(0.62 / this.playerPaceFactor, 0.38, 0.9); e.jumpsLeft = (e.jumpsLeft ?? 3) - 1;
+          e.vy = -440 - clamp(this.playerPaceFactor - 1, 0, 1) * 60;
+          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 70 * clamp(this.playerPaceFactor, 0.9, 1.65);
+          e.onGround = false; e.jumpCd = clamp(0.85 / this.playerPaceFactor, 0.7, 1.2); e.jumpsLeft = (e.jumpsLeft ?? 1) - 1;
           this.spawnPuff(e.x, e.y + e.h, "#ff8c42");
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
@@ -1934,32 +1953,91 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
-      const allyPace = clamp(0.9 + this.playerPaceFactor * 0.45, 1.0, 1.85);
-      const target = this.enemies
-        .filter(e => !e.dying)
-        .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
-      if (target) {
+      const allyPace = clamp(0.95 + this.playerPaceFactor * 0.55, 1.05, 2.05);
+
+      // Find best target within engagement range; otherwise stick with player.
+      const ENGAGE_RANGE = 700;
+      const candidates = this.enemies.filter(e => !e.dying);
+      let target: Enemy | null = null;
+      let bestScore = Infinity;
+      for (const e of candidates) {
+        const d = Math.hypot(e.x - a.x, e.y - a.y);
+        if (d > ENGAGE_RANGE) continue;
+        // Prefer closer-to-player threats slightly to defend the player.
+        const playerD = Math.hypot(e.x - this.px, e.y - this.py);
+        const score = d + playerD * 0.4;
+        if (score < bestScore) { bestScore = score; target = e; }
+      }
+
+      // Re-anchor toward player every frame: blend follow vector even while engaging.
+      const dxToPlayer = leashX - a.x;
+      const playerDist = Math.abs(dxToPlayer);
+      const wantsRecenter = playerDist > 240;
+
+      if (target && !wantsRecenter) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        const followSpeed = a.def.speed * 26 * allyPace;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        const followSpeed = a.def.speed * 32 * allyPace;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.4, followSpeed);
+        // Vertical jump to match target/player
         if (Math.abs(target.y - a.y) > 46 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
-          a.vy = -470 * clamp(allyPace, 1, 1.45);
+          a.vy = -490 * clamp(allyPace, 1, 1.5);
           this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
         }
-        if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
-        a.fireCd -= dt; a.specialCd -= dt;
-        if (Math.abs(dx) < 520 && a.fireCd <= 0) {
-          a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
-          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg, "ally"); }
-          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999, "ally");
-          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent, source:"ally" });
+        // Lil One melee lunge
+        if (a.def.id === "ally_lil_one" && Math.abs(dx) < 90 && Math.abs(dx) > 30) {
+          a.vx = Math.sign(dx) * 360 * allyPace;
         }
-        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120, "ally"); }
+        if (Math.abs(dx) < 60 && a.def.id === "ally_lil_one") a.vx *= 0.3;
+
+        a.fireCd -= dt; a.specialCd -= dt;
+        // Friendly-fire avoidance: skip ranged shot if player is between ally and target.
+        const playerBetween = (this.px > Math.min(a.x, target.x) && this.px < Math.max(a.x, target.x))
+          && Math.abs(this.py - a.y) < 60;
+
+        if (Math.abs(dx) < 540 && a.fireCd <= 0 && (a.def.id === "ally_lil_one" || !playerBetween)) {
+          a.fireCd = a.def.id === "ally_lil_one" ? 0.55 : a.def.id === "ally_eradidog" ? 0.45 : a.def.id === "ally_sheriff" ? 0.7 : 0.7;
+          if (a.def.id === "ally_lil_one") {
+            if (Math.abs(dx) < 60) this.damageEnemy(target, a.def.dmg, "ally");
+          } else if (a.def.id === "ally_dude") {
+            this.damageEnemy(target, 999999999, "ally");
+          } else {
+            // Lead the target by predicting velocity.
+            const lead = (target.vx ?? 0) * 0.15;
+            const projVx = a.facing * (a.def.id === "ally_eradidog" ? 620 : 780) + lead;
+            this.bullets.push({
+              x: a.x, y: a.y + a.def.h * 0.4, vx: projVx, vy: 0,
+              dmg: a.def.dmg, life: 1.4, friendly: true,
+              r: a.def.id === "ally_eradidog" ? 7 : 4,
+              pierce: a.def.id === "ally_eradidog" ? 99 : 0,
+              color: a.def.accent, source: "ally",
+              kind: a.def.id === "ally_eradidog" ? "napalm" : "normal",
+            });
+            // Eradidog rocket: also AoE on the target frame for clear feel
+            if (a.def.id === "ally_eradidog") {
+              this.explode(target.x, target.y, a.def.dmg * 0.45, 80, "ally");
+            }
+          }
+        }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) {
+          a.specialCd = 14;
+          this.explode(target.x, target.y, 500, 160, "ally");
+        }
       } else {
-        const dx = leashX - a.x;
-        a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22 * allyPace);
-        if (Math.abs(dx) > 520) { a.x = this.px - this.pFacing * 70; a.y = Math.min(a.y, this.py + 8); this.spawnPuff(a.x, a.y + a.def.h, a.def.accent); }
+        // Follow / catch up to player
+        const dx = dxToPlayer;
+        a.facing = this.pFacing as 1 | -1;
+        const followSpeed = a.def.speed * 30 * allyPace;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.0, followSpeed);
+        // Vertical follow: jump up if player is above on a platform
+        if (this.py + 4 < a.y - 30 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
+          a.vy = -480 * clamp(allyPace, 1, 1.5);
+        }
+        // Tight teleport leash so they never get left behind.
+        if (Math.abs(dx) > 380 || a.x < this.camX - 60 || a.x > this.camX + W + 60) {
+          a.x = this.px - this.pFacing * 70;
+          a.y = Math.min(a.y, this.py + 8);
+          this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
+        }
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
@@ -2040,7 +2118,7 @@ export class Game {
       e.statuses = e.statuses.filter(s => s.until > now);
       for (const s of e.statuses) {
         if (s.kind === "fire") {
-          e.hp -= (s.data?.dps ?? 10) * dt;
+          e.hp -= (s.data?.dps ?? 10) * 1.15 * dt;
           e.hurtFlash = Math.max(e.hurtFlash, 0.05);
         }
       }
@@ -2053,17 +2131,20 @@ export class Game {
     for (const s of e.statuses) {
       if (s.until <= now) continue;
       if (s.kind === "freeze") return 0;
-      if (s.kind === "slow") mul *= 0.5;
+      if (s.kind === "slow") mul *= 0.4;
     }
     return mul;
   }
   private statusAttackMul(e: Enemy): number {
     if (!e.statuses) return 1;
     const now = performance.now() / 1000;
+    let mul = 1;
     for (const s of e.statuses) {
-      if (s.until > now && s.kind === "enfeeble") return 0.2;
+      if (s.until <= now) continue;
+      if (s.kind === "enfeeble") mul = Math.min(mul, 0.18);
+      if (s.kind === "fire") mul *= 0.9;
     }
-    return 1;
+    return mul;
   }
 
   private dropLoot(e: Enemy) {
@@ -2510,29 +2591,96 @@ export class Game {
         ctx.fillStyle = "rgba(90,120,180,0.35)";
         ctx.fillRect(hx - 18, GROUND_Y - 7, 36, 3);
       } else if (h.kind === "lightning") {
+        // Tesla coil base + animated zap arcs to nearest enemies
+        ctx.fillStyle = "#5a5f66"; ctx.fillRect(hx - 6, GROUND_Y - 6, 12, 6);
         ctx.fillStyle = "#7be0ff";
         ctx.fillRect(hx - 2, GROUND_Y - 44, 4, 44);
         ctx.fillStyle = "#fff7d6";
-        ctx.fillRect(hx - 6, GROUND_Y - 48, 12, 6);
+        ctx.fillRect(hx - 6, GROUND_Y - 50, 12, 8);
+        // Find nearest enemies and draw jagged zap lines
+        const tipX = hx, tipY = GROUND_Y - 50;
+        ctx.strokeStyle = "rgba(123,224,255,0.85)"; ctx.lineWidth = 2;
+        let zaps = 0;
+        for (const e of this.enemies) {
+          if (e.dying || zaps >= 3) continue;
+          const ex = e.x - this.camX;
+          const d = Math.hypot(ex - tipX, (e.y + e.h/2) - tipY);
+          if (d < 160) {
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            const segs = 5;
+            for (let s = 1; s <= segs; s++) {
+              const t = s / segs;
+              const lx = tipX + (ex - tipX) * t + (Math.random() - 0.5) * 8;
+              const ly = tipY + ((e.y + e.h/2) - tipY) * t + (Math.random() - 0.5) * 8;
+              ctx.lineTo(lx, ly);
+            }
+            ctx.stroke();
+            zaps++;
+          }
+        }
+        // Chain to other rods
+        for (const o of this.hazards) {
+          if (o === h || o.kind !== "lightning") continue;
+          const ox = o.x - this.camX;
+          if (Math.abs(ox - tipX) > 200) continue;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          const segs = 6;
+          for (let s = 1; s <= segs; s++) {
+            const t = s / segs;
+            const lx = tipX + (ox - tipX) * t + (Math.random() - 0.5) * 6;
+            const ly = tipY + (Math.random() - 0.5) * 8;
+            ctx.lineTo(lx, ly);
+          }
+          ctx.stroke();
+        }
       } else if (h.kind === "shield") {
+        // Layered shimmering shield
+        const sh = Math.sin(this.animTime * 6) * 2;
+        ctx.fillStyle = "#0a0e1f"; ctx.fillRect(hx - 13, h.y - 37, 26, 58);
         ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 3;
         ctx.strokeRect(hx - 12, h.y - 36, 24, 56);
-        ctx.fillStyle = "rgba(123,224,255,0.16)";
+        ctx.fillStyle = "rgba(123,224,255,0.22)";
         ctx.fillRect(hx - 10, h.y - 34, 20, 52);
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(hx - 9 + sh, h.y - 30, 2, 44);
       } else if (h.kind === "shockwave") {
         const pulse = 1 - h.life / 0.45;
-        ctx.strokeStyle = "rgba(158,214,255,0.8)"; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(hx, h.y - 6, 18 + pulse * 72, 0, Math.PI * 2); ctx.stroke();
+        for (let r = 0; r < 3; r++) {
+          ctx.strokeStyle = `rgba(158,214,255,${0.8 - r * 0.22})`; ctx.lineWidth = 3 - r;
+          ctx.beginPath(); ctx.arc(hx, h.y - 6, 12 + pulse * (60 + r * 20), 0, Math.PI * 2); ctx.stroke();
+        }
       } else if (h.kind === "ray") {
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillRect(hx, h.y - 6, 320 * this.pFacing, 12);
+        // Thick beam with glow + ∞ at muzzle
+        const len = 320 * this.pFacing;
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(hx, h.y - 12, len, 24);
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.fillRect(hx, h.y - 6, len, 12);
+        ctx.fillStyle = "#fff7d6";
+        ctx.fillRect(hx + (this.pFacing > 0 ? 0 : -8), h.y - 4, 8, 8);
+        // ∞
+        this.drawInfinity(ctx, hx + (this.pFacing > 0 ? 6 : -6), h.y - 14, 4, "#ffffff");
       } else if (h.kind === "portalA" || h.kind === "portalB") {
         ctx.strokeStyle = h.kind === "portalA" ? "#38bdf8" : "#ff8c42";
         ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18 + Math.sin(this.animTime * 8) * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 10, 0, Math.PI * 2); ctx.stroke();
       } else if (h.kind === "disco") {
+        // Rotating multicolor orb
+        const r = 11 + Math.sin(this.animTime * 10) * 2;
+        for (let i = 0; i < 6; i++) {
+          const ang = this.animTime * 4 + i * (Math.PI / 3);
+          const hue = (i * 60 + this.animTime * 80) % 360;
+          ctx.fillStyle = `hsl(${hue} 90% 60%)`;
+          ctx.beginPath();
+          ctx.arc(hx + Math.cos(ang) * r, h.y - 16 + Math.sin(ang) * r, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.fillStyle = "#ff4fd8";
-        ctx.beginPath(); ctx.arc(hx, h.y - 16, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx, h.y - 16, 5, 0, Math.PI * 2); ctx.fill();
       }
     }
 
@@ -2584,28 +2732,117 @@ export class Game {
     // Friendly allies
     for (const a of this.allies) {
       const ax = a.x - this.camX - a.def.w / 2;
+      // Soft aura ring so allies stand out from enemies
+      ctx.globalAlpha = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(this.animTime * 4 + a.x * 0.05));
+      ctx.fillStyle = a.def.accent;
+      ctx.beginPath();
+      ctx.arc(ax + a.def.w / 2, a.y + a.def.h / 2, a.def.w * 0.95, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Shadow
       ctx.fillStyle = "rgba(0,0,0,0.28)";
       ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
       const bob = Math.sin(this.animTime * 8 + a.x * 0.04) * 2;
+      const attacking = a.fireCd > (a.def.id === "ally_lil_one" ? 0.35 : 0.55);
+
+      // Body
       ctx.fillStyle = a.def.color;
       ctx.fillRect(ax + 3, a.y + 10 + bob, a.def.w - 6, a.def.h - 18);
       ctx.fillStyle = a.def.accent;
       ctx.fillRect(ax + 1, a.y + 8 + bob, a.def.w - 2, 4);
+      // Head
       ctx.fillStyle = "#fff7d6";
       ctx.fillRect(ax + 6, a.y + 2 + bob, a.def.w - 12, 8);
       ctx.fillStyle = a.def.eye;
       const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
       ctx.fillRect(eyeX, a.y + 5 + bob, 2, 2);
-      ctx.fillStyle = a.def.accent;
-      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
-      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12 + bob, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6 + bob, 6, 6); }
-      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2 + bob, a.def.w + 4, a.def.h + 4); ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, 7, 0, Math.PI * 2); ctx.stroke(); }
-      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y + bob, a.def.w - 12, 3); }
+
+      // Per-type details
+      if (a.def.id === "ally_lil_one") {
+        // Tiny held sword that swings on attack
+        const swing = attacking ? Math.sin(this.animTime * 18) * 0.9 : 0;
+        const sx0 = a.facing > 0 ? ax + a.def.w - 2 : ax + 2;
+        ctx.save();
+        ctx.translate(sx0, a.y + a.def.h * 0.55 + bob);
+        ctx.rotate(swing * a.facing);
+        ctx.fillStyle = "#d8e2ff"; ctx.fillRect(0, -1, a.facing > 0 ? 10 : -10, 2);
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(0, -2, a.facing > 0 ? 2 : -2, 4);
+        ctx.restore();
+      }
+      if (a.def.id === "ally_sheriff") {
+        // Wide cowboy hat brim + crown
+        ctx.fillStyle = "#3a2a10";
+        ctx.fillRect(ax + 2, a.y + bob, a.def.w - 4, 2);
+        ctx.fillRect(ax + 7, a.y - 3 + bob, a.def.w - 14, 3);
+        // Star badge
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(ax + a.def.w / 2 - 2, a.y + 14 + bob, 3, 3);
+        // Revolver
+        ctx.fillStyle = "#222";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42 + bob, 10, 3);
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w + 7 : ax - 9, a.y + a.def.h * 0.4 + bob, 2, 2);
+        // Muzzle flash on shot
+        if (attacking) {
+          ctx.fillStyle = "#fff199";
+          ctx.fillRect(a.facing > 0 ? ax + a.def.w + 10 : ax - 14, a.y + a.def.h * 0.4 + bob, 4, 4);
+        }
+      }
+      if (a.def.id === "ally_eradidog") {
+        // 4 legs animated
+        const lp = Math.sin(this.animTime * 14);
+        ctx.fillStyle = "#3a2a10";
+        ctx.fillRect(ax + 4, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, lp) * 2);
+        ctx.fillRect(ax + 12, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, -lp) * 2);
+        ctx.fillRect(ax + a.def.w - 16, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, lp) * 2);
+        ctx.fillRect(ax + a.def.w - 8, a.y + a.def.h - 6 + bob, 4, 6 + Math.max(0, -lp) * 2);
+        // Rocket on back (black)
+        ctx.fillStyle = "#111";
+        ctx.fillRect(ax + 4, a.y + 4 + bob, a.def.w - 8, 5);
+        ctx.fillStyle = "#ff3a3a";
+        ctx.fillRect(a.facing > 0 ? ax + a.def.w - 6 : ax + 2, a.y + 5 + bob, 4, 3);
+        // Rocket exhaust
+        if (Math.abs(a.vx) > 60 && Math.random() < 0.4) {
+          this.spawnPuff(a.x - a.facing * 14, a.y + 8 + bob, "#ff8c42");
+        }
+      }
+      if (a.def.id === "ally_stalien") {
+        // Pulsing orbital ring
+        const pr = 7 + Math.sin(this.animTime * 5) * 2;
+        ctx.strokeStyle = "#7be0ff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(ax + a.def.w / 2, a.y - 8 + bob, pr, 0, Math.PI * 2); ctx.stroke();
+        // Antenna
+        ctx.fillStyle = "#6ee7b7";
+        ctx.fillRect(ax + a.def.w / 2 - 1, a.y - 4 + bob, 2, 4);
+        // Blinking tip
+        if (Math.floor(this.animTime * 6) % 2 === 0) {
+          ctx.fillStyle = "#fff"; ctx.fillRect(ax + a.def.w / 2 - 1, a.y - 6 + bob, 2, 2);
+        }
+        // Outline
+        ctx.strokeStyle = "rgba(123,224,255,0.6)"; ctx.lineWidth = 1;
+        ctx.strokeRect(ax - 1, a.y - 1 + bob, a.def.w + 2, a.def.h + 2);
+      }
+      if (a.def.id === "ally_dude") {
+        // Red cap brim + crown
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(ax + 4, a.y - 1 + bob, a.def.w - 8, 3);
+        ctx.fillRect(ax + 8, a.y - 4 + bob, a.def.w - 16, 3);
+        // Fist trail when attacking
+        if (attacking) {
+          ctx.fillStyle = "rgba(239,68,68,0.6)";
+          for (let i = 1; i <= 3; i++) {
+            ctx.fillRect(ax - a.facing * (4 + i * 4), a.y + a.def.h * 0.5 + bob, 3, 3);
+          }
+        }
+      }
+
+      // Boots
       ctx.fillStyle = "#111";
       ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
       ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
+      // Lifespan bar
       ctx.fillStyle = "rgba(123,255,138,0.9)";
-      ctx.fillRect(ax, a.y - 6, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
+      ctx.fillRect(ax, a.y - 8, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
     }
 
     // Particles
@@ -2900,24 +3137,75 @@ export class Game {
       ctx.fillRect(this.pFacing > 0 ? barrelX + 2 : barrelX - 3, psy + 18, 4, 6);
     }
 
-    // Melee swing arc
+    // Melee swing arc — per-weapon identity
     if (this.meleeSwing > 0) {
       const swing = this.meleeSwing;
       const cx = psx + this.pw/2;
       const cy = psy + this.ph * 0.45;
-      const len = 26;
-      ctx.strokeStyle = this.parryFlash > 0 ? "#fff" : "#d8e2ff"; ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
-      ctx.stroke();
+      const meleeW = WEAPONS[this.inventory.melee];
+      const facing = this.pFacing;
+      const phase = 1 - swing; // 0..1 progress through swing
+      if (meleeW.id === "katana" || meleeW.id === "yamato") {
+        // Long sweeping blade with motion-trail ghosts
+        const len = meleeW.id === "yamato" ? 38 : 32;
+        const baseAngle = facing > 0 ? -1.2 + phase * 1.6 : Math.PI + 1.2 - phase * 1.6;
+        for (let g = 0; g < 3; g++) {
+          const a = baseAngle - facing * g * 0.18;
+          const alpha = (1 - g / 3) * 0.85;
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = meleeW.color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        // Two-handed grip dot
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(cx - 2, cy - 2, 4, 4);
+        if (meleeW.id === "yamato") {
+          // cyan glint stripe
+          const a = baseAngle;
+          const gx = cx + Math.cos(a) * (len * 0.6);
+          const gy = cy + Math.sin(a) * (len * 0.6);
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(gx - 1, gy - 1, 3, 3);
+        }
+      } else if (meleeW.id === "gauntlet") {
+        // Two gloves alternate punches
+        const which = Math.floor(this.animTime * 12) % 2;
+        for (let g = 0; g < 2; g++) {
+          const reach = 18 + (g === which ? phase * 22 : 0);
+          const gy = cy + (g === 0 ? -6 : 8);
+          ctx.fillStyle = "#9ca3af";
+          ctx.fillRect(cx + facing * reach - (facing > 0 ? 0 : 8), gy - 4, 8, 8);
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(cx + facing * reach + (facing > 0 ? 1 : -3), gy - 3, 2, 2);
+        }
+        // Impact shockwave ring
+        if (phase < 0.5) {
+          ctx.strokeStyle = "rgba(255,140,66,0.6)"; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx + facing * 30, cy, 6 + phase * 30, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        // Knife — short quick swipe
+        const len = 22;
+        const a = facing > 0 ? -0.9 + phase * 1.2 : Math.PI + 0.9 - phase * 1.2;
+        ctx.strokeStyle = this.parryFlash > 0 ? "#fff" : "#d8e2ff"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+        ctx.stroke();
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(cx - 1, cy - 1, 3, 3);
+      }
       if (this.parryFlash > 0) {
-        // sparks
         for (let i = 0; i < 3; i++) {
           ctx.fillStyle = "#fff";
-          ctx.fillRect(cx + this.pFacing * (len + i*3), cy - 4 + i*3, 2, 2);
+          ctx.fillRect(cx + facing * (28 + i*3), cy - 4 + i*3, 2, 2);
         }
       }
-      void swing;
     }
 
     // Shield bubble
