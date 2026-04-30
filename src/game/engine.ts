@@ -19,15 +19,15 @@ const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
 const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
-const PLAYER_BASE_MS = 7.2;
-const PLAYER_MAX_MS = 21;
-const PLAYER_ACCEL = 1850;
-const PLAYER_AIR_ACCEL = 1220;
+const PLAYER_BASE_MS = 8.4;
+const PLAYER_MAX_MS = 24;
+const PLAYER_ACCEL = 2150;
+const PLAYER_AIR_ACCEL = 1380;
 const PLAYER_DECEL = 2400;
 const DASH_DURATION = 0.22;
-const DASH_RECHARGE = 2.35;
-const DASH_SPEED_MULT = 2.2;
-const DASH_EXIT_CARRY = 0.68;
+const DASH_RECHARGE = 2.0;
+const DASH_SPEED_MULT = 2.5;
+const DASH_EXIT_CARRY = 0.72;
 
 const COLOR = {
   ground: "#3b2a1a",
