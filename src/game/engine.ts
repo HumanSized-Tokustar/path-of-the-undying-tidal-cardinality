@@ -2047,7 +2047,7 @@ export class Game {
       e.statuses = e.statuses.filter(s => s.until > now);
       for (const s of e.statuses) {
         if (s.kind === "fire") {
-          e.hp -= (s.data?.dps ?? 10) * dt;
+          e.hp -= (s.data?.dps ?? 10) * 1.15 * dt;
           e.hurtFlash = Math.max(e.hurtFlash, 0.05);
         }
       }
