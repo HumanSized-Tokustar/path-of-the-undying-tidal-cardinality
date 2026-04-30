@@ -2453,6 +2453,41 @@ export class Game {
       ctx.fillStyle = "#fff8"; ctx.fillRect(sx - 3, p.y - 3, 2, 2);
     }
 
+    // Field hazards / placed weapons
+    for (const h of this.hazards) {
+      const hx = h.x - this.camX;
+      if (h.kind === "oil") {
+        ctx.fillStyle = "rgba(20,20,28,0.8)";
+        ctx.fillRect(hx - 42, GROUND_Y - 10, 84, 10);
+        ctx.fillStyle = "rgba(90,120,180,0.35)";
+        ctx.fillRect(hx - 18, GROUND_Y - 7, 36, 3);
+      } else if (h.kind === "lightning") {
+        ctx.fillStyle = "#7be0ff";
+        ctx.fillRect(hx - 2, GROUND_Y - 44, 4, 44);
+        ctx.fillStyle = "#fff7d6";
+        ctx.fillRect(hx - 6, GROUND_Y - 48, 12, 6);
+      } else if (h.kind === "shield") {
+        ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 3;
+        ctx.strokeRect(hx - 12, h.y - 36, 24, 56);
+        ctx.fillStyle = "rgba(123,224,255,0.16)";
+        ctx.fillRect(hx - 10, h.y - 34, 20, 52);
+      } else if (h.kind === "shockwave") {
+        const pulse = 1 - h.life / 0.45;
+        ctx.strokeStyle = "rgba(158,214,255,0.8)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(hx, h.y - 6, 18 + pulse * 72, 0, Math.PI * 2); ctx.stroke();
+      } else if (h.kind === "ray") {
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.fillRect(hx, h.y - 6, 320 * this.pFacing, 12);
+      } else if (h.kind === "portalA" || h.kind === "portalB") {
+        ctx.strokeStyle = h.kind === "portalA" ? "#38bdf8" : "#ff8c42";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(hx, h.y - 18, 18, 0, Math.PI * 2); ctx.stroke();
+      } else if (h.kind === "disco") {
+        ctx.fillStyle = "#ff4fd8";
+        ctx.beginPath(); ctx.arc(hx, h.y - 16, 10, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
     // Enemies (humanoid rigs)
     for (const e of this.enemies) {
       this.drawEnemy(e);
@@ -2482,6 +2517,32 @@ export class Game {
 
     // Player (humanoid)
     this.drawPlayer();
+
+    // Friendly allies
+    for (const a of this.allies) {
+      const ax = a.x - this.camX - a.def.w / 2;
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fillRect(ax + 2, GROUND_Y - 2, a.def.w, 3);
+      ctx.fillStyle = a.def.color;
+      ctx.fillRect(ax + 3, a.y + 10, a.def.w - 6, a.def.h - 18);
+      ctx.fillStyle = a.def.accent;
+      ctx.fillRect(ax + 1, a.y + 8, a.def.w - 2, 4);
+      ctx.fillStyle = "#fff7d6";
+      ctx.fillRect(ax + 6, a.y + 2, a.def.w - 12, 8);
+      ctx.fillStyle = a.def.eye;
+      const eyeX = a.facing > 0 ? ax + a.def.w - 9 : ax + 7;
+      ctx.fillRect(eyeX, a.y + 5, 2, 2);
+      ctx.fillStyle = a.def.accent;
+      if (a.def.id === "ally_sheriff") ctx.fillRect(a.facing > 0 ? ax + a.def.w : ax - 10, a.y + a.def.h * 0.42, 10, 3);
+      if (a.def.id === "ally_eradidog") { ctx.fillRect(ax + 2, a.y + a.def.h - 12, a.def.w - 4, 8); ctx.fillRect(ax + a.def.w - 4, a.y + 6, 6, 6); }
+      if (a.def.id === "ally_stalien") { ctx.strokeStyle = "#7be0ff"; ctx.strokeRect(ax - 2, a.y - 2, a.def.w + 4, a.def.h + 4); }
+      if (a.def.id === "ally_dude") { ctx.fillStyle = "#ef4444"; ctx.fillRect(ax + 6, a.y, a.def.w - 12, 3); }
+      ctx.fillStyle = "#111";
+      ctx.fillRect(ax + 5, a.y + a.def.h - 6, 5, 6);
+      ctx.fillRect(ax + a.def.w - 10, a.y + a.def.h - 6, 5, 6);
+      ctx.fillStyle = "rgba(123,255,138,0.9)";
+      ctx.fillRect(ax, a.y - 6, a.def.w * Math.max(0, a.life / a.def.lifespan), 3);
+    }
 
     // Particles
     for (const p of this.particles) {
