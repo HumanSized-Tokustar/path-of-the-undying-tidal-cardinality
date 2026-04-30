@@ -1640,21 +1640,22 @@ export class Game {
         const dist = Math.abs(dx);
         const dy = (this.py + this.ph/2) - (e.y + e.h/2);
         const fireMul = this.diffEnemyFire();
+        const paceCatchup = clamp(0.86 + this.playerPaceFactor * 0.32 + dist / 1500, 0.9, this.difficulty === "son" ? 1.7 : 1.48);
 
         switch (e.type) {
           case "shanker":
-            e.vx = Math.sign(dx) * 130;
+            e.vx = Math.sign(dx) * 130 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && dy < -30 && dist < 200) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
             break;
           case "shankerSwift":
-            e.vx = Math.sign(dx) * 220;
+            e.vx = Math.sign(dx) * 220 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && (Math.random() < 0.02 || dy < -20) && dist < 220) { e.vy = -540; e.onGround = false; e.jumpCd = 0.9; }
             break;
           case "shooter":
             // strafe in/out of optimal range
-            if (dist > 320) e.vx = Math.sign(dx) * 90;
+            if (dist > 320) e.vx = Math.sign(dx) * 90 * paceCatchup;
             else if (dist < 180) e.vx = -Math.sign(dx) * 90;
-            else e.vx = Math.sin(this.timeAlive * 2 + e.x * 0.01) * 50;
+            else e.vx = Math.sin(this.timeAlive * 2 + e.x * 0.01) * 50 * paceCatchup;
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 460) {
               e.fireCd = rand(1.0, 1.8) * fireMul;
@@ -1663,9 +1664,9 @@ export class Game {
             if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.01) { e.vy = -480; e.onGround = false; e.jumpCd = 1.5; }
             break;
           case "shooterElite":
-            if (dist > 320) e.vx = Math.sign(dx) * 110;
+            if (dist > 320) e.vx = Math.sign(dx) * 110 * paceCatchup;
             else if (dist < 200) e.vx = -Math.sign(dx) * 100;
-            else e.vx = Math.sin(this.timeAlive * 3) * 60;
+            else e.vx = Math.sin(this.timeAlive * 3) * 60 * paceCatchup;
             e.fireCd -= dt; e.burstCd -= dt;
             if (e.burstLeft > 0 && e.burstCd <= 0) {
               this.spawnEnemyBullet(e, 480, 10);
@@ -1676,7 +1677,7 @@ export class Game {
             if (e.onGround && e.jumpCd <= 0 && dy < -40 && Math.random() < 0.02) { e.vy = -520; e.onGround = false; e.jumpCd = 1.2; }
             break;
           case "brute":
-            e.vx = Math.sign(dx) * 60;
+            e.vx = Math.sign(dx) * 60 * paceCatchup;
             if (e.onGround && e.jumpCd <= 0 && dist < 80 && dy < -10) { e.vy = -560; e.onGround = false; e.jumpCd = 1.5; }
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 380) {
@@ -1685,7 +1686,7 @@ export class Game {
             }
             break;
           case "bruteHeavy":
-            e.vx = Math.sign(dx) * 40;
+            e.vx = Math.sign(dx) * 40 * paceCatchup;
             e.fireCd -= dt;
             if (e.fireCd <= 0 && dist < 220 && e.onGround) {
               e.fireCd = 3.0 * fireMul;
