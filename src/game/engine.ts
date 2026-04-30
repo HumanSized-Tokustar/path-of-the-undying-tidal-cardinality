@@ -1257,8 +1257,12 @@ export class Game {
       if (w.id === "medkit") this.useMedkit();
       else if (w.id === "shockwave") {
         this.hazards.push({ kind:"shockwave", x:this.px + this.pFacing * 35, y:GROUND_Y, life:0.45 });
-        this.pvx += this.pFacing * 360; this.pvy = -380;
-        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 180) { e.vx += this.pFacing * 420; e.vy = -420; }
+        // Force player leap
+        this.pvx = this.pFacing * 540;
+        this.pvy = -460;
+        this.pOnGround = false;
+        for (const e of this.enemies) if (Math.hypot(e.x - this.px, e.y - this.py) < 200) { e.vx += this.pFacing * 480; e.vy = -460; e.onGround = false; }
+        for (let i = 0; i < 14; i++) this.particles.push({ x: this.px + this.pw/2, y: this.py + this.ph, vx: rand(-200, 200), vy: rand(-260, -40), life: 0.6, max: 0.6, color: "#9ed6ff", size: 3 });
         this.flashDescription("SHOCKWAVE — everything leaps forward");
       } else if (w.id === "lightning_rod") {
         this.hazards.push({ kind:"lightning", x:this.px + this.pFacing * 45, y:GROUND_Y, life:10, cd:0 });
@@ -1268,6 +1272,8 @@ export class Game {
         this.flashDescription("DISPOSABLE SHIELD — 10s barrier");
       } else if (w.id === "obliterator_ray") {
         this.hazards.push({ kind:"ray", x:this.px + this.pw/2, y:this.py + this.ph*0.4, life:0.25 });
+        this.parryFlash = Math.max(this.parryFlash, 0.5);
+        this.screenShake = Math.max(this.screenShake, 10);
         for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
         this.flashDescription("OBLITERATOR RAY ∞");
       }
