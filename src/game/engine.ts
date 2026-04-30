@@ -2027,6 +2027,11 @@ export class Game {
         src = next;
       }
     }
+    const owned = this.inventory.augments.filter(a => a.startsWith(`${weaponId}:`)).length;
+    if (owned > 0) {
+      const col = this.hasStatusOnWeapon(weaponId, "fire") ? "#ff6a00" : this.hasStatusOnWeapon(weaponId, "freeze") ? "#9ed6ff" : this.hasStatusOnWeapon(weaponId, "lightning") ? "#ffffff" : "#d97bff";
+      for (let i = 0; i < owned + 2; i++) this.particles.push({ x:e.x + rand(-e.w/2, e.w/2), y:e.y + rand(0, e.h), vx:rand(-40, 40), vy:rand(-90, -20), life:0.34, max:0.34, color:col, size:2 });
+    }
   }
   private tickStatuses(dt: number) {
     const now = performance.now() / 1000;
