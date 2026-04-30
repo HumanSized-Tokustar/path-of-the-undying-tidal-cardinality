@@ -1832,14 +1832,14 @@ export class Game {
             }
           }
         }
-        // All enemies can multi-jump and short dash to stay in the same pace band as the player.
-        if (e.onGround) e.jumpsLeft = this.difficulty === "son" ? 4 : 3;
-        const jumpNeed = Math.abs(dyToPlayer) > 42 || Math.abs((this.px + this.pw/2) - e.x) > 260;
-        const jumpChance = (0.018 + (this.playerPaceFactor - 0.7) * 0.018) * espd;
+        // Enemies multi-jump and short dash to keep pace, but with nerfed frequency/impulse.
+        if (e.onGround) e.jumpsLeft = this.difficulty === "dunce" ? 1 : this.difficulty === "son" ? 3 : 2;
+        const jumpNeed = Math.abs(dyToPlayer) > 50 || Math.abs((this.px + this.pw/2) - e.x) > 320;
+        const jumpChance = (0.009 + Math.max(0, this.playerPaceFactor - 0.7) * 0.009) * espd;
         if ((e.jumpsLeft ?? 0) > 0 && e.jumpCd <= 0 && (Math.random() < jumpChance || jumpNeed)) {
-          e.vy = -520 - clamp(this.playerPaceFactor - 1, 0, 1) * 90;
-          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 80 * clamp(this.playerPaceFactor, 0.9, 1.7);
-          e.onGround = false; e.jumpCd = clamp(0.62 / this.playerPaceFactor, 0.38, 0.9); e.jumpsLeft = (e.jumpsLeft ?? 3) - 1;
+          e.vy = -440 - clamp(this.playerPaceFactor - 1, 0, 1) * 60;
+          e.vx += Math.sign((this.px + this.pw/2) - e.x) * 70 * clamp(this.playerPaceFactor, 0.9, 1.65);
+          e.onGround = false; e.jumpCd = clamp(0.85 / this.playerPaceFactor, 0.7, 1.2); e.jumpsLeft = (e.jumpsLeft ?? 1) - 1;
           this.spawnPuff(e.x, e.y + e.h, "#ff8c42");
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
