@@ -19,6 +19,15 @@ const H = 540;
 const GROUND_Y = 460;
 const PX_PER_METER = 32;
 const DAY_NIGHT_PERIOD = 60; // seconds for full cycle
+const PLAYER_BASE_MS = 7.2;
+const PLAYER_MAX_MS = 21;
+const PLAYER_ACCEL = 1850;
+const PLAYER_AIR_ACCEL = 1220;
+const PLAYER_DECEL = 2400;
+const DASH_DURATION = 0.22;
+const DASH_RECHARGE = 2.35;
+const DASH_SPEED_MULT = 2.2;
+const DASH_EXIT_CARRY = 0.68;
 
 const COLOR = {
   ground: "#3b2a1a",
@@ -219,7 +228,8 @@ export class Game {
   private slowFall = 0; // antigrav: seconds remaining of slow-fall buff
   private pInv = 0;
   private dashCharges = 2; private dashRecharge = 0; private dashTime = 0;
-  private dashTrail: { x:number; y:number; life:number }[] = [];
+  private dashTrail: { x:number; y:number; life:number; max:number; facing:1|-1 }[] = [];
+  private playerPaceFactor = 1;
   private rolling = false; private rollTime = 0;
   private rollCharges = 2; private rollRecharge = 0;
   private slamming = false;
@@ -686,21 +696,22 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Wave 10 movement: deliberately nerfed so the world and enemies keep up.
+    // Wave 10 movement: deliberately nerfed, but smoothed so dashes and enemy pacing feel fair.
     const meters = this.worldX / PX_PER_METER;
     const stepIncrements = Math.floor(meters / 900);
-    const paceMs = Math.min(18, 8 + stepIncrements * 0.75);
-    this.paceMult = paceMs / 8;
+    const paceMs = Math.min(PLAYER_MAX_MS, PLAYER_BASE_MS + stepIncrements * 0.62);
+    this.paceMult = paceMs / PLAYER_BASE_MS;
 
-    let speed = paceMs * (PX_PER_METER / 3);
+    let speed = paceMs * PX_PER_METER;
     if (this.rolling) speed *= 1.18;
     if (this.odActive) speed *= 1.08;
     if (this.puSpeed > 0) speed *= 1.25;
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
-    const PLAYER_MAX_MS = 22;
     speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
+    const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
+    this.playerPaceFactor = clamp(0.55 + liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0.65, 1.75);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -708,17 +719,30 @@ export class Game {
       ? PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx! * (this.currentPlatform.conveyorDir)
       : 0;
 
-    if (this.input.left) { this.pFacing = -1; this.pvx = friction < 0.5 ? this.pvx + (-speed - this.pvx) * friction : -speed; }
-    else if (this.input.right) { this.pFacing = 1; this.pvx = friction < 0.5 ? this.pvx + (speed - this.pvx) * friction : speed; }
-    else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
+    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
+    const accel = (this.pOnGround ? PLAYER_ACCEL : PLAYER_AIR_ACCEL) * clamp(friction, 0.35, 1.15);
+    const decel = PLAYER_DECEL * clamp(friction, 0.25, 1.1);
+    if (moveDir !== 0) {
+      this.pFacing = moveDir as 1 | -1;
+      const target = moveDir * speed;
+      const step = accel * dt;
+      this.pvx += clamp(target - this.pvx, -step, step);
+    } else if (this.dashTime <= 0) {
+      const step = decel * dt;
+      if (Math.abs(this.pvx) <= step) this.pvx = 0;
+      else this.pvx -= Math.sign(this.pvx) * step;
+    }
     this.pvx += conveyorPush;
 
     // Dash (Q) — with i-frames
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
-      this.dashTime = 0.18;
-      this.pInv = Math.max(this.pInv, 0.18);
+      this.dashTime = DASH_DURATION;
+      this.pInv = Math.max(this.pInv, DASH_DURATION);
+      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.spawnPuff(this.px + this.pw/2 - this.pFacing * 10, this.py + this.ph * 0.65, "#7be0ff");
+      this.spawnPuff(this.px + this.pw/2 - this.pFacing * 18, this.py + this.ph * 0.45, "#ffffff");
       this.dashCharges--;
-      if (this.dashRecharge <= 0) this.dashRecharge = 2.6;
+      if (this.dashRecharge <= 0) this.dashRecharge = DASH_RECHARGE;
     }
     // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
     const rollPressed = (this as any).rollPressed as boolean;
@@ -731,9 +755,10 @@ export class Game {
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * 1.75;
+      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
       this.dashTime -= dt;
-      this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
+      if (this.dashTime <= 0) this.pvx = this.pFacing * speed * DASH_EXIT_CARRY;
+      this.dashTrail.push({ x: this.px, y: this.py, life: 0.24, max: 0.24, facing: this.pFacing });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
@@ -758,7 +783,7 @@ export class Game {
       this.dashRecharge -= dt;
       if (this.dashRecharge <= 0 && this.dashCharges < this.maxDashCharges) {
         this.dashCharges++;
-        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = 2.6;
+        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = DASH_RECHARGE;
       }
     }
     if (this.rollRecharge > 0) {
@@ -1001,10 +1026,10 @@ export class Game {
     this.updateEnemies(dt);
     this.tickStatuses(dt);
 
-    // === Wave 10 spawn system: base 5 enemies / 5s, +6 every 666m, SON doubles.
+    // === Wave 10 spawn system: distance tiers, paced by actual player speed so waves match progress.
     {
-      const cap = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
-      const newTier = Math.min(cap, Math.floor(meters / 666));
+      const tierLimit = this.difficulty === "dunce" ? 7 : this.difficulty === "son" ? 40 : 15;
+      const newTier = Math.min(tierLimit, Math.floor(meters / 666));
       if (newTier > this.spawnTier) {
         for (let i = this.spawnTier + 1; i <= newTier; i++) {
           this.tideMessageCount++;
@@ -1016,16 +1041,25 @@ export class Game {
         }
         this.spawnTier = newTier;
       }
-      this.spawnAllowance = (5 + this.spawnTier * 6) * (this.difficulty === "son" ? 2 : 1);
-      this.spawnTimer -= dt * (1 + Math.min(2.5, Math.max(0, this.pvx) / Math.max(1, speed)));
+      const difficultyMul = this.difficulty === "dunce" ? 0.8 : this.difficulty === "son" ? 2 : 1;
+      const desiredWave = Math.round((5 + this.spawnTier * 6) * difficultyMul);
+      this.spawnAllowance = Math.max(3, desiredWave);
+      const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
+      const speedRatio = clamp(liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0, 1.8);
+      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.35 + speedRatio, 0.35, 1.65) : 0.08;
+      this.spawnTimer -= dt * spawnClock;
       const canSpawn = !this.inSafeZone;
       if (canSpawn && this.spawnTimer <= 0) {
-        const target = Math.min(90, this.spawnAllowance);
+        const screenCap = this.difficulty === "dunce" ? 12 : this.difficulty === "son" ? 42 : 24;
+        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.35, 0.65, 1.25))));
         const current = this.enemies.filter(e => !e.dying).length;
-        const burst = Math.max(1, Math.min(target - current, Math.ceil(target / 5)));
-        for (let i = 0; i < burst; i++) this.spawnEnemy();
-        this.enemiesSpawned += Math.max(0, burst);
-        this.spawnTimer = 1.0;
+        const openSlots = Math.max(0, target - current);
+        const burst = Math.min(openSlots, Math.max(1, Math.ceil(target / (this.difficulty === "son" ? 5 : 7))));
+        if (burst > 0) {
+          for (let i = 0; i < burst; i++) this.spawnEnemy();
+          this.enemiesSpawned += burst;
+        }
+        this.spawnTimer = clamp(1.15 - speedRatio * 0.28, 0.58, 1.45);
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
@@ -1698,7 +1732,7 @@ export class Game {
         }
       }
 
-      const espd = this.diffEnemySpeed();
+      const espd = this.diffEnemySpeed() * clamp(0.82 + this.playerPaceFactor * 0.22, 0.75, this.difficulty === "son" ? 1.45 : 1.28);
       if (!e.flying && !e.thrown) {
         // ---- Smart ladder AI: seek nearest ladder if there's a vertical gap to player ----
         let onLadder: Platform | null = null;
@@ -1754,7 +1788,7 @@ export class Game {
           e.vy = -500; e.onGround = false; e.jumpCd = 0.9; e.jumpsLeft = (e.jumpsLeft ?? 2) - 1;
         }
         e.dashCd = (e.dashCd ?? 1.5) - dt;
-        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 260; e.dashCd = rand(1.8, 3.2); }
+        if (e.dashCd <= 0 && Math.abs((this.px + this.pw/2) - e.x) < 360) { e.vx += Math.sign((this.px + this.pw/2) - e.x) * 220 * clamp(this.playerPaceFactor, 0.8, 1.35); e.dashCd = rand(1.9, 3.4); }
       }
       if (!e.thrown) e.x += e.vx * dt * espd * speedMul;
 
@@ -2410,9 +2444,15 @@ export class Game {
 
     // Dash trail
     for (const t of this.dashTrail) {
-      ctx.globalAlpha = t.life * 4 * 0.4;
+      const a = clamp(t.life / t.max, 0, 1);
+      const sx = t.x - this.camX;
+      ctx.globalAlpha = a * 0.55;
       ctx.fillStyle = "#7be0ff";
-      ctx.fillRect(t.x - this.camX, t.y, this.pw, this.ph);
+      ctx.fillRect(sx - t.facing * 6, t.y + 3, this.pw, this.ph - 6);
+      ctx.globalAlpha = a * 0.35;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(sx - t.facing * 16, t.y + 12, 18, 3);
+      ctx.fillRect(sx - t.facing * 24, t.y + 25, 14, 2);
     }
     ctx.globalAlpha = 1;
 
@@ -2761,6 +2801,7 @@ export class Game {
       return;
     }
     const baseCol = ENEMY_COLOR[e.type];
+    const activeStatuses = (e.statuses ?? []).filter(s => s.until > performance.now() / 1000);
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.fillRect(sx + 2, GROUND_Y - 2, e.w, 3);
 
@@ -2859,6 +2900,18 @@ export class Game {
     if (e.disabled > 0 || e.grabbed) {
       ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 2;
       ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
+    }
+
+    // Clear status-effect tells so players can read Fire/Freeze/Slow/Enfeeble/Lightning/Ultracrit quickly.
+    if (activeStatuses.length) {
+      for (const s of activeStatuses) {
+        if (s.kind === "fire") { ctx.strokeStyle = "#ff6a00"; ctx.lineWidth = 2; ctx.strokeRect(sx - 3, e.y - 3, e.w + 6, e.h + 6); }
+        if (s.kind === "freeze") { ctx.fillStyle = "rgba(155,232,255,0.28)"; ctx.fillRect(sx - 4, e.y - 4, e.w + 8, e.h + 8); }
+        if (s.kind === "slow") { ctx.strokeStyle = "#7be0ff"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(sx - 5, e.y - 5, e.w + 10, e.h + 10); ctx.setLineDash([]); }
+        if (s.kind === "enfeeble") { ctx.fillStyle = "rgba(217,123,255,0.22)"; ctx.fillRect(sx - 2, e.y - 2, e.w + 4, e.h + 4); }
+        if (s.kind === "lightning") { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx + e.w * 0.2, e.y - 6); ctx.lineTo(sx + e.w * 0.55, e.y + 8); ctx.lineTo(sx + e.w * 0.35, e.y + 8); ctx.lineTo(sx + e.w * 0.75, e.y + 24); ctx.stroke(); }
+        if (s.kind === "ultracrit") { ctx.strokeStyle = "#ff3030"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx - 4, e.y + e.h / 2); ctx.lineTo(sx + e.w + 4, e.y + e.h / 2); ctx.stroke(); }
+      }
     }
 
     // HP bar
