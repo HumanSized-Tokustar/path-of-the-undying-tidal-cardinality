@@ -2444,9 +2444,15 @@ export class Game {
 
     // Dash trail
     for (const t of this.dashTrail) {
-      ctx.globalAlpha = t.life * 4 * 0.4;
+      const a = clamp(t.life / t.max, 0, 1);
+      const sx = t.x - this.camX;
+      ctx.globalAlpha = a * 0.55;
       ctx.fillStyle = "#7be0ff";
-      ctx.fillRect(t.x - this.camX, t.y, this.pw, this.ph);
+      ctx.fillRect(sx - t.facing * 6, t.y + 3, this.pw, this.ph - 6);
+      ctx.globalAlpha = a * 0.35;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(sx - t.facing * 16, t.y + 12, 18, 3);
+      ctx.fillRect(sx - t.facing * 24, t.y + 25, 14, 2);
     }
     ctx.globalAlpha = 1;
 
@@ -2795,6 +2801,7 @@ export class Game {
       return;
     }
     const baseCol = ENEMY_COLOR[e.type];
+    const activeStatuses = (e.statuses ?? []).filter(s => s.until > performance.now() / 1000);
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.fillRect(sx + 2, GROUND_Y - 2, e.w, 3);
 
@@ -2893,6 +2900,18 @@ export class Game {
     if (e.disabled > 0 || e.grabbed) {
       ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 2;
       ctx.strokeRect(sx - 2, e.y - 2, e.w + 4, e.h + 4);
+    }
+
+    // Clear status-effect tells so players can read Fire/Freeze/Slow/Enfeeble/Lightning/Ultracrit quickly.
+    if (activeStatuses.length) {
+      for (const s of activeStatuses) {
+        if (s.kind === "fire") { ctx.strokeStyle = "#ff6a00"; ctx.lineWidth = 2; ctx.strokeRect(sx - 3, e.y - 3, e.w + 6, e.h + 6); }
+        if (s.kind === "freeze") { ctx.fillStyle = "rgba(155,232,255,0.28)"; ctx.fillRect(sx - 4, e.y - 4, e.w + 8, e.h + 8); }
+        if (s.kind === "slow") { ctx.strokeStyle = "#7be0ff"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(sx - 5, e.y - 5, e.w + 10, e.h + 10); ctx.setLineDash([]); }
+        if (s.kind === "enfeeble") { ctx.fillStyle = "rgba(217,123,255,0.22)"; ctx.fillRect(sx - 2, e.y - 2, e.w + 4, e.h + 4); }
+        if (s.kind === "lightning") { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx + e.w * 0.2, e.y - 6); ctx.lineTo(sx + e.w * 0.55, e.y + 8); ctx.lineTo(sx + e.w * 0.35, e.y + 8); ctx.lineTo(sx + e.w * 0.75, e.y + 24); ctx.stroke(); }
+        if (s.kind === "ultracrit") { ctx.strokeStyle = "#ff3030"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx - 4, e.y + e.h / 2); ctx.lineTo(sx + e.w + 4, e.y + e.h / 2); ctx.stroke(); }
+      }
     }
 
     // HP bar
