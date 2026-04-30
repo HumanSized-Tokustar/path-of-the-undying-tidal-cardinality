@@ -3058,24 +3058,75 @@ export class Game {
       ctx.fillRect(this.pFacing > 0 ? barrelX + 2 : barrelX - 3, psy + 18, 4, 6);
     }
 
-    // Melee swing arc
+    // Melee swing arc — per-weapon identity
     if (this.meleeSwing > 0) {
       const swing = this.meleeSwing;
       const cx = psx + this.pw/2;
       const cy = psy + this.ph * 0.45;
-      const len = 26;
-      ctx.strokeStyle = this.parryFlash > 0 ? "#fff" : "#d8e2ff"; ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, len, this.pFacing > 0 ? -1.2 : Math.PI - 0.2, this.pFacing > 0 ? 0.2 : Math.PI + 1.2);
-      ctx.stroke();
+      const meleeW = WEAPONS[this.inventory.melee];
+      const facing = this.pFacing;
+      const phase = 1 - swing; // 0..1 progress through swing
+      if (meleeW.id === "katana" || meleeW.id === "yamato") {
+        // Long sweeping blade with motion-trail ghosts
+        const len = meleeW.id === "yamato" ? 38 : 32;
+        const baseAngle = facing > 0 ? -1.2 + phase * 1.6 : Math.PI + 1.2 - phase * 1.6;
+        for (let g = 0; g < 3; g++) {
+          const a = baseAngle - facing * g * 0.18;
+          const alpha = (1 - g / 3) * 0.85;
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = meleeW.color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        // Two-handed grip dot
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(cx - 2, cy - 2, 4, 4);
+        if (meleeW.id === "yamato") {
+          // cyan glint stripe
+          const a = baseAngle;
+          const gx = cx + Math.cos(a) * (len * 0.6);
+          const gy = cy + Math.sin(a) * (len * 0.6);
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(gx - 1, gy - 1, 3, 3);
+        }
+      } else if (meleeW.id === "gauntlet") {
+        // Two gloves alternate punches
+        const which = Math.floor(this.animTime * 12) % 2;
+        for (let g = 0; g < 2; g++) {
+          const reach = 18 + (g === which ? phase * 22 : 0);
+          const gy = cy + (g === 0 ? -6 : 8);
+          ctx.fillStyle = "#9ca3af";
+          ctx.fillRect(cx + facing * reach - (facing > 0 ? 0 : 8), gy - 4, 8, 8);
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(cx + facing * reach + (facing > 0 ? 1 : -3), gy - 3, 2, 2);
+        }
+        // Impact shockwave ring
+        if (phase < 0.5) {
+          ctx.strokeStyle = "rgba(255,140,66,0.6)"; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx + facing * 30, cy, 6 + phase * 30, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        // Knife — short quick swipe
+        const len = 22;
+        const a = facing > 0 ? -0.9 + phase * 1.2 : Math.PI + 0.9 - phase * 1.2;
+        ctx.strokeStyle = this.parryFlash > 0 ? "#fff" : "#d8e2ff"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+        ctx.stroke();
+        ctx.fillStyle = "#7a4a22"; ctx.fillRect(cx - 1, cy - 1, 3, 3);
+      }
       if (this.parryFlash > 0) {
-        // sparks
         for (let i = 0; i < 3; i++) {
           ctx.fillStyle = "#fff";
-          ctx.fillRect(cx + this.pFacing * (len + i*3), cy - 4 + i*3, 2, 2);
+          ctx.fillRect(cx + facing * (28 + i*3), cy - 4 + i*3, 2, 2);
         }
       }
-      void swing;
     }
 
     // Shield bubble
