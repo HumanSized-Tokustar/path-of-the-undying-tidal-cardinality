@@ -1896,20 +1896,27 @@ export class Game {
     this.allies = this.allies.filter(a => {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
-      const target = this.enemies.find(e => !e.dying);
+      const leashX = this.px - this.pFacing * 54;
+      const target = this.enemies
+        .filter(e => !e.dying)
+        .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
       if (target) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx) * a.def.speed * 22;
+        const followSpeed = a.def.speed * 26;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
         a.fireCd -= dt; a.specialCd -= dt;
         if (Math.abs(dx) < 520 && a.fireCd <= 0) {
           a.fireCd = a.def.id === "ally_lil_one" ? 0.7 : a.def.id === "ally_eradidog" ? 0.55 : 0.9;
-          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg); }
-          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999);
-          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent });
+          if (a.def.id === "ally_lil_one") { if (Math.abs(dx) < 55) this.damageEnemy(target, a.def.dmg, "ally"); }
+          else if (a.def.id === "ally_dude") this.damageEnemy(target, 999999999, "ally");
+          else this.bullets.push({ x:a.x, y:a.y+a.def.h*0.4, vx:a.facing*(a.def.id === "ally_eradidog" ? 560 : 720), vy:0, dmg:a.def.dmg, life:1.2, friendly:true, r:a.def.id === "ally_eradidog" ? 7 : 4, pierce:a.def.id === "ally_eradidog" ? 99 : 0, color:a.def.accent, source:"ally" });
         }
-        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120); }
+        if (a.def.id === "ally_stalien" && a.specialCd <= 0) { a.specialCd = 20; this.explode(target.x, target.y, 500, 120, "ally"); }
       } else {
-        const dx = (this.px - 45) - a.x; a.vx = Math.sign(dx) * Math.min(Math.abs(dx), a.def.speed * 18);
+        const dx = leashX - a.x;
+        a.facing = dx > 0 ? 1 : -1;
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22);
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
