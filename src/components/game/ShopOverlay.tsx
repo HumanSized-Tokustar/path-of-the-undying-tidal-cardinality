@@ -20,10 +20,10 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
   const canAfford = (cost: number, cur: "coins"|"tokens"|"crystals") =>
     (cur === "coins" ? stats.coins : cur === "tokens" ? stats.tokens : stats.crystals) >= cost;
 
-  const buyItem = (it: ShopItem) => { if (canAfford(it.cost, it.currency)) game.buyMainItem(it.id); };
+  const buyItem = (it: ShopItem) => { if (canAfford(it.cost, it.currency) && game.canBuyMainItem(it.id)) game.buyMainItem(it.id); };
   const buyAlly = (a: AllyDef) => { if (canAfford(a.cost, a.currency)) game.buyAlly(a.id); };
-  const buyAug = (a: AugmentDef) => { if (canAfford(a.cost, a.currency)) game.buyAugment(a.id); };
-  const buyStatus = (sid: string, cost: number) => { if (canAfford(cost, "crystals")) game.buyStatusAugment(sid, cost); };
+  const buyAug = (a: AugmentDef) => { if (canAfford(a.cost, a.currency) && game.canBuyAugment(a.id)) game.buyAugment(a.id); };
+  const buyStatus = (sid: string, cost: number) => { if (canAfford(cost, "crystals") && game.canBuyStatusAugment(sid)) game.buyStatusAugment(sid, cost); };
 
   // Pagination
   const list = kind === "main" ? MAIN_SHOP : kind === "shady" ? AUGMENT_SHOP : [];
@@ -81,7 +81,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
             <>
               <div className="grid grid-cols-3 gap-3">
                 {visible.map(it => {
-                  const ok = canAfford(it.cost, it.currency);
+                  const ok = canAfford(it.cost, it.currency) && game.canBuyMainItem(it.id);
                   const sel = selected === it.id;
                   return (
                     <button key={it.id}
@@ -122,7 +122,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
                 <div className="grid grid-cols-2 gap-2">
                   {visible.map((a: any) => {
                     const owned = stats.inventory.augments.includes(a.id);
-                    const ok = canAfford(a.cost, a.currency) && !owned;
+                    const ok = canAfford(a.cost, a.currency) && game.canBuyAugment(a.id);
                     const sel = selected === a.id;
                     return (
                       <button key={a.id}
@@ -133,7 +133,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
                         <div className="text-[9px]" style={{ color: a.color }}>{a.name}</div>
                         <div className="text-[7px] text-[#fff7d6]/60">{a.tier}</div>
                         <div className="text-[7px] text-[#fff7d6]/80 line-clamp-3 flex-1 mt-1">{a.desc}</div>
-                        <div className="text-[8px]" style={{ color: a.color }}>{owned ? "OWNED" : `${a.cost} ${a.currency.toUpperCase()}`}</div>
+                        <div className="text-[8px]" style={{ color: a.color }}>{owned || !game.canBuyAugment(a.id) ? "MAXED" : `${a.cost} ${a.currency.toUpperCase()}`}</div>
                       </button>
                     );
                   })}
@@ -147,7 +147,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
                 <div className="space-y-1.5">
                   {STATUS_AUGMENTS.map(s => {
                     const id = `status:${s.id}`;
-                    const ok = stats.crystals >= s.cost;
+                    const ok = stats.crystals >= s.cost && game.canBuyStatusAugment(s.id);
                     const has = game.hasStatusOnActive(s.id);
                     const sel = selected === id;
                     return (
@@ -158,7 +158,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
                         style={{ borderColor: "#d97bff", background: "#0a0e1f", color: "#fff7d6", opacity: has ? 0.5 : ok ? 1 : 0.6 }}>
                         <span>{s.name}</span>
                         <span className="flex-1 text-[8px] text-left ml-2 text-[#fff7d6]/70">{s.desc}</span>
-                        <span style={{ color: "#d97bff" }}>{has ? "ADDED" : `ADD · ${s.cost}`}</span>
+                        <span style={{ color: "#d97bff" }}>{has ? "ADDED" : !game.canBuyStatusAugment(s.id) ? `MAX ${game.activeWeaponStatusCount()}/3` : `ADD · ${s.cost}`}</span>
                       </button>
                     );
                   })}
