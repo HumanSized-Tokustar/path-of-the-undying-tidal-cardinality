@@ -776,9 +776,11 @@ export class Game {
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
       this.dashTime = DASH_DURATION;
       this.pInv = Math.max(this.pInv, DASH_DURATION);
-      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.pvx = this.pFacing * speed * (DASH_SPEED_MULT + 0.12);
+      this.pvy *= 0.72;
       this.spawnPuff(this.px + this.pw/2 - this.pFacing * 10, this.py + this.ph * 0.65, "#7be0ff");
       this.spawnPuff(this.px + this.pw/2 - this.pFacing * 18, this.py + this.ph * 0.45, "#ffffff");
+      for (let i = 0; i < 5; i++) this.particles.push({ x:this.px + this.pw/2 - this.pFacing * (12 + i * 5), y:this.py + 12 + i * 5, vx:-this.pFacing * rand(90, 220), vy:rand(-80, 60), life:0.22, max:0.22, color:i % 2 ? "#7be0ff" : "#ffffff", size:2 + (i % 2) });
       this.dashCharges--;
       if (this.dashRecharge <= 0) this.dashRecharge = DASH_RECHARGE;
     }
@@ -786,14 +788,16 @@ export class Game {
     const rollPressed = (this as any).rollPressed as boolean;
     if (rollPressed && this.rollCharges > 0 && !this.rolling && this.dashTime <= 0) {
       this.rolling = true;
-      this.rollTime = 0.38;
+      this.rollTime = 0.42;
       this.pInv = Math.max(this.pInv, 0.38);
+      this.pvx = this.pFacing * speed * 1.38;
+      this.spawnPuff(this.px + this.pw/2, this.py + this.ph - 4, "#fff7d6");
       this.rollCharges--;
       if (this.rollRecharge <= 0) this.rollRecharge = 5;
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.pvx = this.pFacing * speed * (DASH_SPEED_MULT + 0.12);
       this.dashTime -= dt;
       if (this.dashTime <= 0) this.pvx = this.pFacing * speed * DASH_EXIT_CARRY;
       this.dashTrail.push({ x: this.px, y: this.py, life: 0.24, max: 0.24, facing: this.pFacing });
@@ -801,7 +805,7 @@ export class Game {
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
       this.rollTime -= dt;
-      this.pvx = this.pFacing * speed * 1.25;
+      this.pvx = this.pFacing * speed * 1.34;
       // Knock enemies in path away
       const cx = this.px + this.pw/2, cy = this.py + this.ph/2;
       for (const e of this.enemies) {
