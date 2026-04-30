@@ -1934,13 +1934,18 @@ export class Game {
       a.life -= dt;
       if (a.life <= 0 || a.hp <= 0) return false;
       const leashX = this.px - this.pFacing * 54;
+      const allyPace = clamp(0.9 + this.playerPaceFactor * 0.45, 1.0, 1.85);
       const target = this.enemies
         .filter(e => !e.dying)
         .sort((lhs, rhs) => Math.hypot(lhs.x - a.x, lhs.y - a.y) - Math.hypot(rhs.x - a.x, rhs.y - a.y))[0];
       if (target) {
         const dx = target.x - a.x; a.facing = dx > 0 ? 1 : -1;
-        const followSpeed = a.def.speed * 26;
+        const followSpeed = a.def.speed * 26 * allyPace;
         a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 3.2, followSpeed);
+        if (Math.abs(target.y - a.y) > 46 && a.y + a.def.h >= GROUND_Y - 2 && a.vy >= 0) {
+          a.vy = -470 * clamp(allyPace, 1, 1.45);
+          this.spawnPuff(a.x, a.y + a.def.h, a.def.accent);
+        }
         if (Math.abs(dx) < 70 && a.def.id === "ally_lil_one") a.vx *= 0.25;
         a.fireCd -= dt; a.specialCd -= dt;
         if (Math.abs(dx) < 520 && a.fireCd <= 0) {
@@ -1953,7 +1958,8 @@ export class Game {
       } else {
         const dx = leashX - a.x;
         a.facing = dx > 0 ? 1 : -1;
-        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22);
+        a.vx = Math.sign(dx || a.facing) * Math.min(Math.abs(dx) * 2.8, a.def.speed * 22 * allyPace);
+        if (Math.abs(dx) > 520) { a.x = this.px - this.pFacing * 70; a.y = Math.min(a.y, this.py + 8); this.spawnPuff(a.x, a.y + a.def.h, a.def.accent); }
       }
       a.x += a.vx * dt;
       a.vy += 1200 * dt; a.y += a.vy * dt;
