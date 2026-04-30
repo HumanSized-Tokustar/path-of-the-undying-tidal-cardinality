@@ -1927,9 +1927,14 @@ export class Game {
     });
   }
 
-  private damageEnemy(e: Enemy, dmg: number) {
+  private hasStatusOnWeapon(weaponId: WeaponId | undefined, statusId: StatusKind): boolean {
+    if (!weaponId || WEAPONS[weaponId].class !== "ranged") return false;
+    return this.inventory.augments.includes(`${weaponId}:${statusId}`);
+  }
+  private damageEnemy(e: Enemy, dmg: number, source?: WeaponId | "ally" | "hazard" | "player") {
     if (e.dying) return;
-    if (this.hasStatusOnActive("ultracrit") && Math.random() < 0.01) dmg *= 4;
+    const sourceWeapon = typeof source === "string" && source in WEAPONS ? source as WeaponId : undefined;
+    if (this.hasStatusOnWeapon(sourceWeapon, "ultracrit") && Math.random() < 0.01) dmg *= 4;
     e.hp -= dmg;
     e.hurtFlash = 0.12;
     this.totalDmg += dmg;
@@ -1939,13 +1944,14 @@ export class Game {
       x: e.x, y: e.y + e.h/2, vx: rand(-120, 120), vy: rand(-200, -40),
       life: 0.4, max: 0.4, color: "#ffd166", size: 2,
     });
-    this.applyWeaponStatuses(e);
+    this.applyWeaponStatuses(e, sourceWeapon);
   }
-  private applyWeaponStatuses(e: Enemy) {
+  private applyWeaponStatuses(e: Enemy, weaponId?: WeaponId) {
+    if (!weaponId || WEAPONS[weaponId].class !== "ranged") return;
     if (!e.statuses) e.statuses = [];
     const now = performance.now() / 1000;
     const apply = (k: StatusKind, dur: number, data?: any) => {
-      if (!this.hasStatusOnActive(k)) return;
+      if (!this.hasStatusOnWeapon(weaponId, k)) return;
       const ex = e.statuses!.find(s => s.kind === k);
       if (ex) { ex.until = now + dur; if (data) ex.data = data; }
       else e.statuses!.push({ kind: k, until: now + dur, data });
@@ -1954,7 +1960,7 @@ export class Game {
     apply("enfeeble", 5);
     apply("freeze", 3);
     apply("slow", 5);
-    if (this.hasStatusOnActive("lightning")) {
+    if (this.hasStatusOnWeapon(weaponId, "lightning")) {
       let src = e; const chained: Enemy[] = [];
       for (let i = 0; i < 4; i++) {
         const next = this.enemies.find(ee =>
