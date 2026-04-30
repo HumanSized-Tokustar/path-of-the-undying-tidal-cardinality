@@ -2060,17 +2060,20 @@ export class Game {
     for (const s of e.statuses) {
       if (s.until <= now) continue;
       if (s.kind === "freeze") return 0;
-      if (s.kind === "slow") mul *= 0.5;
+      if (s.kind === "slow") mul *= 0.4;
     }
     return mul;
   }
   private statusAttackMul(e: Enemy): number {
     if (!e.statuses) return 1;
     const now = performance.now() / 1000;
+    let mul = 1;
     for (const s of e.statuses) {
-      if (s.until > now && s.kind === "enfeeble") return 0.2;
+      if (s.until <= now) continue;
+      if (s.kind === "enfeeble") mul = Math.min(mul, 0.18);
+      if (s.kind === "fire") mul *= 0.9;
     }
-    return 1;
+    return mul;
   }
 
   private dropLoot(e: Enemy) {
