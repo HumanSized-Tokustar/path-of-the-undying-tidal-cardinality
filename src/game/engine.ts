@@ -747,16 +747,17 @@ export class Game {
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
     speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
-    const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
-    this.playerPaceFactor = clamp(0.55 + liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0.65, 1.75);
-    this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
+    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
+    const liveMs = Math.abs(this.pvx) / PX_PER_METER;
+    const paceIntent = moveDir !== 0 ? 0.18 : 0;
+    this.playerPaceFactor = clamp(0.62 + liveMs / Math.max(PLAYER_BASE_MS, paceMs) + paceIntent, 0.72, 1.95);
+    this.animTime += dt * clamp(0.45 + this.playerPaceFactor * 0.75, 0.55, 1.85);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
     const conveyorPush = this.currentPlatform && PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx
       ? PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx! * (this.currentPlatform.conveyorDir)
       : 0;
 
-    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
     const accel = (this.pOnGround ? PLAYER_ACCEL : PLAYER_AIR_ACCEL) * clamp(friction, 0.35, 1.15);
     const decel = PLAYER_DECEL * clamp(friction, 0.25, 1.1);
     if (moveDir !== 0) {
