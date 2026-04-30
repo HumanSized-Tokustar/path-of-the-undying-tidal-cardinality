@@ -696,21 +696,22 @@ export class Game {
     }
     this.input.wheelDelta *= 0.5;
 
-    // Wave 10 movement: deliberately nerfed so the world and enemies keep up.
+    // Wave 10 movement: deliberately nerfed, but smoothed so dashes and enemy pacing feel fair.
     const meters = this.worldX / PX_PER_METER;
     const stepIncrements = Math.floor(meters / 900);
-    const paceMs = Math.min(18, 8 + stepIncrements * 0.75);
-    this.paceMult = paceMs / 8;
+    const paceMs = Math.min(PLAYER_MAX_MS, PLAYER_BASE_MS + stepIncrements * 0.62);
+    this.paceMult = paceMs / PLAYER_BASE_MS;
 
-    let speed = paceMs * (PX_PER_METER / 3);
+    let speed = paceMs * PX_PER_METER;
     if (this.rolling) speed *= 1.18;
     if (this.odActive) speed *= 1.08;
     if (this.puSpeed > 0) speed *= 1.25;
     if (this.weather === "rain") speed *= 0.92;
     if (this.weather === "storm") speed *= 0.85;
     if (this.weather === "snow") speed *= 0.95;
-    const PLAYER_MAX_MS = 22;
     speed = Math.min(speed, PLAYER_MAX_MS * PX_PER_METER);
+    const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
+    this.playerPaceFactor = clamp(0.55 + liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0.65, 1.75);
     this.animTime += dt * (Math.abs(this.pvx) > 10 ? 1 : 0.4);
 
     const friction = this.currentPlatform ? PLATFORM_VARIANTS[this.currentPlatform.kind].friction : 1.0;
@@ -718,17 +719,30 @@ export class Game {
       ? PLATFORM_VARIANTS[this.currentPlatform.kind].conveyorVx! * (this.currentPlatform.conveyorDir)
       : 0;
 
-    if (this.input.left) { this.pFacing = -1; this.pvx = friction < 0.5 ? this.pvx + (-speed - this.pvx) * friction : -speed; }
-    else if (this.input.right) { this.pFacing = 1; this.pvx = friction < 0.5 ? this.pvx + (speed - this.pvx) * friction : speed; }
-    else { this.pvx = friction < 0.5 ? this.pvx * (1 - friction * 0.3) : 0; }
+    const moveDir = this.input.left ? -1 : this.input.right ? 1 : 0;
+    const accel = (this.pOnGround ? PLAYER_ACCEL : PLAYER_AIR_ACCEL) * clamp(friction, 0.35, 1.15);
+    const decel = PLAYER_DECEL * clamp(friction, 0.25, 1.1);
+    if (moveDir !== 0) {
+      this.pFacing = moveDir as 1 | -1;
+      const target = moveDir * speed;
+      const step = accel * dt;
+      this.pvx += clamp(target - this.pvx, -step, step);
+    } else if (this.dashTime <= 0) {
+      const step = decel * dt;
+      if (Math.abs(this.pvx) <= step) this.pvx = 0;
+      else this.pvx -= Math.sign(this.pvx) * step;
+    }
     this.pvx += conveyorPush;
 
     // Dash (Q) — with i-frames
     if (this.input.dashPressed && this.dashCharges > 0 && this.dashTime <= 0 && !this.rolling) {
-      this.dashTime = 0.18;
-      this.pInv = Math.max(this.pInv, 0.18);
+      this.dashTime = DASH_DURATION;
+      this.pInv = Math.max(this.pInv, DASH_DURATION);
+      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
+      this.spawnPuff(this.px + this.pw/2 - this.pFacing * 10, this.py + this.ph * 0.65, "#7be0ff");
+      this.spawnPuff(this.px + this.pw/2 - this.pFacing * 18, this.py + this.ph * 0.45, "#ffffff");
       this.dashCharges--;
-      if (this.dashRecharge <= 0) this.dashRecharge = 2.6;
+      if (this.dashRecharge <= 0) this.dashRecharge = DASH_RECHARGE;
     }
     // Roll (Z) — independent meter, twice-as-slow recharge, full i-frames, knocks enemies
     const rollPressed = (this as any).rollPressed as boolean;
@@ -741,9 +755,10 @@ export class Game {
     }
     (this as any).rollPressed = false;
     if (this.dashTime > 0) {
-      this.pvx = this.pFacing * speed * 1.75;
+      this.pvx = this.pFacing * speed * DASH_SPEED_MULT;
       this.dashTime -= dt;
-      this.dashTrail.push({ x: this.px, y: this.py, life: 0.2 });
+      if (this.dashTime <= 0) this.pvx = this.pFacing * speed * DASH_EXIT_CARRY;
+      this.dashTrail.push({ x: this.px, y: this.py, life: 0.24, max: 0.24, facing: this.pFacing });
     }
     this.dashTrail = this.dashTrail.filter(t => { t.life -= dt; return t.life > 0; });
     if (this.rolling) {
@@ -768,7 +783,7 @@ export class Game {
       this.dashRecharge -= dt;
       if (this.dashRecharge <= 0 && this.dashCharges < this.maxDashCharges) {
         this.dashCharges++;
-        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = 2.6;
+        if (this.dashCharges < this.maxDashCharges) this.dashRecharge = DASH_RECHARGE;
       }
     }
     if (this.rollRecharge > 0) {
