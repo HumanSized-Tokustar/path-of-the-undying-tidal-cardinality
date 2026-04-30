@@ -3040,10 +3040,14 @@ export class Game {
     ctx.fillRect(eyeX - 1, e.y + 7, 4, 4);
 
     // Type-specific accents
+    if (!e.flying && Math.abs(e.vx) > 80 && Math.random() < 0.08) {
+      this.particles.push({ x:e.x - e.facing * e.w/2, y:e.y + e.h, vx:-e.facing * rand(20, 70), vy:rand(-30, -5), life:0.24, max:0.24, color:"#8a6a42", size:2 });
+    }
     if (e.type === "shooter" || e.type === "shooterElite" || e.type === "sniper") {
       ctx.fillStyle = "#222";
       if (e.facing > 0) ctx.fillRect(sx + e.w, e.y + e.h * 0.45, 12, 3);
       else ctx.fillRect(sx - 12, e.y + e.h * 0.45, 12, 3);
+      if (e.fireCd < 0.25) { ctx.fillStyle = "#fff199"; ctx.fillRect(e.facing > 0 ? sx + e.w + 12 : sx - 14, e.y + e.h * 0.45 - 1, 3, 5); }
     }
     if (e.type === "shanker" || e.type === "shankerSwift") {
       // Hood
