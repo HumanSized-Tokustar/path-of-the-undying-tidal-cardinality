@@ -1083,25 +1083,31 @@ export class Game {
         }
         this.spawnTier = newTier;
       }
-      const difficultyMul = this.difficulty === "dunce" ? 0.8 : this.difficulty === "son" ? 2 : 1;
-      const desiredWave = Math.round((5 + this.spawnTier * 6) * difficultyMul);
+      // Per-difficulty spawn shape
+      const diffSpawn = this.difficulty === "dunce"
+        ? { base: 4, step: 3, cap: 8, intMin: 1.4, intMax: 1.8 }
+        : this.difficulty === "son"
+        ? { base: 10, step: 8, cap: 36, intMin: 0.42, intMax: 1.2 }
+        : { base: 6, step: 5, cap: 18, intMin: 0.55, intMax: 1.5 };
+      const desiredWave = diffSpawn.base + this.spawnTier * diffSpawn.step;
       this.spawnAllowance = Math.max(3, desiredWave);
       const liveMs = Math.max(0, this.pvx) / PX_PER_METER;
       const speedRatio = clamp(liveMs / Math.max(PLAYER_BASE_MS, paceMs), 0, 1.8);
-      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.35 + speedRatio, 0.35, 1.65) : 0.08;
+      const spawnClock = this.input.right || liveMs > 0.8 ? clamp(0.4 + speedRatio * 1.2, 0.4, 2.1) : 0.08;
       this.spawnTimer -= dt * spawnClock;
       const canSpawn = !this.inSafeZone;
       if (canSpawn && this.spawnTimer <= 0) {
-        const screenCap = this.difficulty === "dunce" ? 12 : this.difficulty === "son" ? 42 : 24;
-        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.35, 0.65, 1.25))));
+        const screenCap = diffSpawn.cap;
+        const target = Math.min(screenCap, Math.max(4, Math.round(this.spawnAllowance * clamp(0.75 + speedRatio * 0.4, 0.65, 1.35))));
         const current = this.enemies.filter(e => !e.dying).length;
         const openSlots = Math.max(0, target - current);
-        const burst = Math.min(openSlots, Math.max(1, Math.ceil(target / (this.difficulty === "son" ? 5 : 7))));
+        const minBurst = speedRatio > 1.2 ? 2 : 1;
+        const burst = Math.min(openSlots, Math.max(minBurst, Math.ceil(target / (this.difficulty === "son" ? 4 : 6))));
         if (burst > 0) {
           for (let i = 0; i < burst; i++) this.spawnEnemy();
           this.enemiesSpawned += burst;
         }
-        this.spawnTimer = clamp(1.15 - speedRatio * 0.28, 0.58, 1.45);
+        this.spawnTimer = clamp(diffSpawn.intMax - speedRatio * 0.35, diffSpawn.intMin, diffSpawn.intMax);
       }
     }
     if (this.tideMsgTimer > 0) this.tideMsgTimer -= dt;
