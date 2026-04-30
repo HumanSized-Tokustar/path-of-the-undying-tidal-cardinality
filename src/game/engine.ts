@@ -1538,7 +1538,8 @@ export class Game {
 
   private spawnEnemy() {
     const meters = this.worldX / PX_PER_METER;
-    const spawnX = this.camX + W + rand(40, 200);
+    const leadOffset = clamp(this.pvx * 0.35, 0, 540);
+    const spawnX = this.camX + W + 60 + leadOffset + rand(20, 160);
 
     const pool: EnemyType[] = ["shooter", "shanker"];
     if (meters > 150) pool.push("brute");
