@@ -2793,16 +2793,48 @@ export class Game {
 
     // Arm carrying weapon
     const activeW = WEAPONS[this.inventory.ranged[this.inventory.activeRanged]];
+    const muzzleFlash = Math.max(this.fireCdR / Math.max(activeW.fireCd, 0.01), 0);
     ctx.fillStyle = "#fde2a0";
     if (this.pFacing > 0) ctx.fillRect(psx + this.pw - 6, psy + 18, 4, 8);
     else ctx.fillRect(psx + 2, psy + 18, 4, 8);
-    // Weapon
+    // Weapon silhouette + per-weapon identity
+    const gunX = this.pFacing > 0 ? psx + this.pw : psx - 18;
+    const barrelX = this.pFacing > 0 ? gunX + 14 : gunX - 4;
     ctx.fillStyle = "#222";
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw, psy + 20, 12, 4);
-    else ctx.fillRect(psx - 12, psy + 20, 12, 4);
+    if (activeW.id === "sniper") {
+      ctx.fillRect(gunX, psy + 19, 18, 3);
+      ctx.fillStyle = "#5a5f66"; ctx.fillRect(gunX + 4, psy + 17, 6, 2);
+    } else if (activeW.id === "rocket") {
+      ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#4f8a35"; ctx.fillRect(gunX + (this.pFacing > 0 ? 12 : -2), psy + 19, 4, 3);
+    } else if (activeW.id === "flamethrower") {
+      ctx.fillRect(gunX, psy + 19, 12, 4);
+      ctx.fillStyle = "#ff6a00"; ctx.fillRect(psx + (this.pFacing > 0 ? 2 : this.pw - 8), psy + 16, 6, 10);
+    } else if (activeW.id === "portalgun") {
+      ctx.fillRect(gunX, psy + 19, 12, 4);
+      ctx.fillStyle = "#38bdf8"; ctx.fillRect(barrelX, psy + 18, 2, 2);
+      ctx.fillStyle = "#ff8c42"; ctx.fillRect(barrelX, psy + 22, 2, 2);
+    } else if (activeW.id === "gold_machine_gun") {
+      ctx.fillStyle = "#7a5a10"; ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#ffd84a"; ctx.fillRect(gunX + 2, psy + 17, 10, 1);
+    } else if (activeW.id === "oiler") {
+      ctx.fillRect(gunX, psy + 19, 10, 4);
+      ctx.fillStyle = "#1f2937"; ctx.fillRect(psx + (this.pFacing > 0 ? 0 : this.pw - 6), psy + 16, 5, 9);
+    } else if (activeW.id === "shotgun") {
+      ctx.fillRect(gunX, psy + 18, 14, 5);
+      ctx.fillStyle = "#7a4a22"; ctx.fillRect(gunX + (this.pFacing > 0 ? 2 : 8), psy + 23, 3, 4);
+    } else if (activeW.id === "rifle") {
+      ctx.fillRect(gunX, psy + 19, 16, 3);
+      ctx.fillStyle = "#9ed6ff"; ctx.fillRect(gunX + 5, psy + 18, 5, 1);
+    } else {
+      ctx.fillRect(gunX, psy + 20, 12, 4);
+    }
     ctx.fillStyle = activeW.color;
-    if (this.pFacing > 0) ctx.fillRect(psx + this.pw + 10, psy + 20, 2, 2);
-    else ctx.fillRect(psx - 12, psy + 20, 2, 2);
+    ctx.fillRect(this.pFacing > 0 ? gunX + 10 : gunX, psy + 20, 2, 2);
+    if (muzzleFlash > 0.6 && activeW.kind === "ranged") {
+      ctx.fillStyle = activeW.id === "portalgun" ? "#fff7d6" : activeW.id === "flamethrower" ? "#ffb347" : "#fff199";
+      ctx.fillRect(this.pFacing > 0 ? barrelX + 2 : barrelX - 3, psy + 18, 4, 6);
+    }
 
     // Melee swing arc
     if (this.meleeSwing > 0) {
