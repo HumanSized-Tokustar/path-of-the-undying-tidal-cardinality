@@ -84,11 +84,11 @@ export function AlmanacOverlay({ onClose }: { onClose: () => void }) {
         </Section>
 
         <Section title="Allies">
-          {ALLIES.map(a => <Card key={a.def.id} color={a.def.accent} title={`${a.def.name} — ${a.price}c`} text={`${a.def.desc} HP ${a.def.hp}, DMG ${a.def.dmg}, life ${a.def.life}s.`} />)}
+          {ALLIES.map(a => <Card key={a.id} color={a.accent} title={`${a.name} — ${a.cost} ${a.currency}`} text={`${a.desc} HP ${a.hp}, DMG ${a.dmg}, life ${a.lifespan}s. ${a.ability}`} />)}
         </Section>
 
         <Section title="Augments / Status">
-          {STATUS_AUGMENTS.map(s => <Card key={s.id} color={s.color} title={s.name} text={s.desc} />)}
+          {STATUS_AUGMENTS.map(s => <Card key={s.id} color="#d97bff" title={`${s.name} — ${s.cost}`} text={s.desc} />)}
         </Section>
 
         <Section title="Mechanics">
