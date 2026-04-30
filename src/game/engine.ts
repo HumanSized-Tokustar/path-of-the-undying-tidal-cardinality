@@ -100,6 +100,7 @@ interface Bullet {
   dmg: number; life: number; friendly: boolean; r: number; pierce: number;
   color: string;
   kind?: "normal" | "napalm" | "oil" | "portal" | "disco";
+  source?: WeaponId | "ally" | "hazard" | "player";
 }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; gravity?: number; }
 interface Pickup { x: number; y: number; vy: number; type: "coin" | "token" | "crystal"; value: number; life: number; }
@@ -303,6 +304,7 @@ export class Game {
   private nextAllyAt = 1667;
   private nextShadyAt = 3333;
   private maxDashCharges = 2;
+  private maxRollCharges = 2;
   private maxHpBonusBought = 0;
   private reviveBuys = 0;
   private purchaseCounts: Record<string, number> = {};
@@ -478,7 +480,7 @@ export class Game {
     this.lives = this.maxLives;
     this.slowFall = 0;
     this.maxDashCharges = 2; this.dashCharges = this.maxDashCharges; this.dashRecharge = 0; this.dashTime = 0; this.dashTrail = [];
-    this.rollCharges = 2; this.rollRecharge = 0;
+    this.maxRollCharges = 2; this.rollCharges = this.maxRollCharges; this.rollRecharge = 0;
     (this as any).rollPressed = false;
     this.shieldActive = false; this.shieldTime = 0; this.shieldCd = 0;
     this.odBar = 0; this.odActive = false; this.odTime = 0;
@@ -551,9 +553,18 @@ export class Game {
     if (it.weapon && !this.inventory.owned.includes(it.weapon)) this.inventory.owned.push(it.weapon);
     if (it.consumable === "medkit") this.inventory.consumables.medkit++;
     if (it.consumable === "ammoPack") this.inventory.consumables.ammoPack++;
+    if (it.ammo) this.ammo += it.ammo;
     if (it.grenades) this.miscAmmo += it.grenades;
     if (it.weapon && it.limit && it.limit > 1) this.miscAmmo += 1;
     if (it.maxHp) { this.pMaxHp += it.maxHp; this.pHp += it.maxHp; }
+    if (it.dash) { this.maxDashCharges += it.dash; this.dashCharges = Math.min(this.maxDashCharges, this.dashCharges + it.dash); }
+    if (it.roll) { this.maxRollCharges += it.roll; this.rollCharges = Math.min(this.maxRollCharges, this.rollCharges + it.roll); }
+    if (it.revive && this.reviveBuys < 2) {
+      const add = Math.min(it.revive, 2 - this.reviveBuys);
+      this.reviveBuys += add;
+      this.maxLives += add;
+      this.lives += add;
+    }
     audio.play("applepay");
     this.flashDescription(`Bought ${it.name}`);
     this.emitStats();
@@ -788,9 +799,9 @@ export class Game {
     }
     if (this.rollRecharge > 0) {
       this.rollRecharge -= dt;
-      if (this.rollRecharge <= 0 && this.rollCharges < 2) {
+      if (this.rollRecharge <= 0 && this.rollCharges < this.maxRollCharges) {
         this.rollCharges++;
-        if (this.rollCharges < 2) this.rollRecharge = 5;
+        if (this.rollCharges < this.maxRollCharges) this.rollRecharge = 5;
       }
     }
 
