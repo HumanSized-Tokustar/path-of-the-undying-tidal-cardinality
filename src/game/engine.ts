@@ -1028,6 +1028,11 @@ export class Game {
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) {
         if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
+        else if (b.kind === "disco") {
+          // Place a disco hazard that pulses for 5s; affected enemies forced jump-only.
+          this.hazards.push({ kind:"disco", x:b.x, y:GROUND_Y - 16, life:5 });
+          this.screenShake = Math.max(this.screenShake, 4);
+        }
         else {
           const isButton = (b.source as any) === "the_button";
           const radius = isButton ? 180 : (b.kind === "napalm" ? 110 : 90);
