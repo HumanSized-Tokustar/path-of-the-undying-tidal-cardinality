@@ -59,7 +59,7 @@ export const MAIN_SHOP: ShopItem[] = [
   { id:"buy_sniper", name:"Sniper", cost:4000, currency:"coins", category:"ranged", weapon:"sniper", limit:1, color:"#111111", visual:"Long black stick", desc:"100 DMG. 2 Pierce. Slow fire, fast projectile, long range. 0.75s CD." },
   { id:"buy_rocket", name:"Rocket Launcher", cost:5000, currency:"coins", category:"ranged", weapon:"rocket", limit:1, color:"#4f8a35", visual:"Long green stick with bottom handle", desc:"200 DMG. AOE damage. 2s CD." },
   { id:"buy_oiler", name:"Oiler", cost:1234, currency:"coins", category:"ranged", weapon:"oiler", limit:1, color:"#1f2937", visual:"Tank on back, hose in hand", desc:"Makes ground slippery. Enemies slip, making them vulnerable." },
-  { id:"buy_portal", name:"Portal Gun", cost:8000, currency:"coins", category:"ranged", weapon:"portalgun", limit:1, color:"#38bdf8", visual:"White stick with orange/blue claws", desc:"Creates Point A & B portals. Teleports player or enemy. Lasts 3s. 4s CD." },
+  { id:"buy_button", name:"The Button", cost:10000, currency:"coins", category:"misc", weapon:"the_button", limit:10, color:"#9ca3af", visual:"Gray cube with a red button", desc:"Press button to summon a green bomb of destruction from the sky for MASSIVE AoE damage. 900 DMG, r180." },
   { id:"buy_flamer", name:"Flamethrower", cost:2643, currency:"coins", category:"ranged", weapon:"flamethrower", limit:1, color:"#ff6a00", visual:"Orange tank and hose", desc:"Continuous stream of Fire status." },
   { id:"buy_goldmg", name:"Gold Machine Gun", cost:7777, currency:"coins", category:"ranged", weapon:"gold_machine_gun", limit:1, color:"#ffd84a", visual:"Golden", desc:"VERY VERY fast fire rate. 8 DMG per hit. 0.01s CD." },
   { id:"buy_katana", name:"Katana", cost:450, currency:"coins", category:"melee", weapon:"katana", limit:1, color:"#c9d1d9", visual:"Long gray stick", desc:"Longer basic melee. 40 DMG. 0.4s CD." },
@@ -79,7 +79,7 @@ export const MAIN_SHOP: ShopItem[] = [
 ];
 
 export const ALLIES: AllyDef[] = [
-  { id:"ally_lil_one", name:"Lil One", role:"MINION", hp:70, dmg:20, speed:5, lifespan:20, cost:15, currency:"tokens", color:"#8b8f98", accent:"#c9d1d9", eye:"#fff7d6", w:24, h:24, desc:"Gray cube holding a stick. Disposable minion with sword.", ability:"SWORD 20 DMG" },
+  { id:"ally_lil_one", name:"Lil One", role:"MINION", hp:90, dmg:28, speed:6, lifespan:35, cost:10, currency:"tokens", color:"#8b8f98", accent:"#c9d1d9", eye:"#fff7d6", w:24, h:24, desc:"Gray cube holding a stick. Disposable minion with sword. NO BUY LIMIT — spam them!", ability:"SWORD 28 DMG (UNLIMITED SPAWN)" },
   { id:"ally_sheriff", name:"Sheriff Seriff", role:"REVOLVER", hp:800, dmg:110, speed:5, lifespan:251, cost:40, currency:"tokens", color:"#7a5130", accent:"#ffd84a", eye:"#111111", w:24, h:40, desc:"Human with a hat holding a gun. Strong revolver fighter.", ability:"REVOLVER 110 DMG" },
   { id:"ally_eradidog", name:"Eradidog", role:"ROCKET DOG", hp:500, dmg:95, speed:9, lifespan:381, cost:120, currency:"tokens", color:"#8b8f98", accent:"#111111", eye:"#ff3a3a", w:36, h:24, desc:"Gray dog with black rocket strapped on back. Fast rocket support with AoE splash.", ability:"FAST ROCKET 95 DMG + 80 AoE" },
   { id:"ally_stalien", name:"STAlien", role:"LASER", hp:1000, dmg:140, speed:6, lifespan:480, cost:200, currency:"tokens", color:"#6ee7b7", accent:"#7be0ff", eye:"#0a0e1f", w:26, h:40, desc:"Generic alien humanoid. Laser gun plus UFO orbital strike every 14s.", ability:"LASER 140 + ORBITAL 500 (r160)" },
