@@ -1281,6 +1281,16 @@ export class Game {
         this.screenShake = Math.max(this.screenShake, 10);
         for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
         this.flashDescription("OBLITERATOR RAY ∞");
+      } else if (w.id === "the_button") {
+        // Press button: spawn a green bomb falling from sky onto target spot
+        const tx = this.px + this.pw/2 + this.pFacing * 120;
+        this.bullets.push({
+          x: tx, y: this.camY ?? 0, vx: 0, vy: 520,
+          dmg: 900, life: 3.0, friendly: true, r: 12, pierce: 99,
+          color: "#39ff14", kind: "napalm", source: "the_button" as any,
+        });
+        this.flashDescription("THE BUTTON — Green bomb incoming");
+        this.screenShake = Math.max(this.screenShake, 6);
       }
       else if ((w.id as any) === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
