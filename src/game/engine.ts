@@ -1027,7 +1027,12 @@ export class Game {
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) {
         if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
-        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        else {
+          const isButton = (b.source as any) === "the_button";
+          const radius = isButton ? 180 : (b.kind === "napalm" ? 110 : 90);
+          this.explode(b.x, b.y, b.dmg, radius, b.source);
+          if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<radius && this.addStatus(e,"fire",5,{dps:20}));
+        }
         return false;
       }
       if (b.friendly) {
