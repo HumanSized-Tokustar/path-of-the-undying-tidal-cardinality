@@ -137,6 +137,7 @@ interface Enemy {
   dashCd?: number;
   jumpsLeft?: number;
   summonCd?: number;
+  discoUntil?: number;   // Wave 13 disco bomb: forced jump-only, no attacking, no movement
 }
 
 export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
@@ -1965,7 +1966,11 @@ export class Game {
         }
       }
       if (h.kind === "disco") {
-        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 150) { e.disabled = Math.max(e.disabled, 6); e.vy = e.onGround ? -260 : e.vy; }
+        const now = performance.now() / 1000;
+        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 170) {
+          e.discoUntil = Math.max(e.discoUntil ?? 0, now + 5);
+          e.fireCd = Math.max(e.fireCd, 5);
+        }
       }
       if ((h.kind === "portalA" || h.kind === "portalB") && h.pair) {
         const tryTeleport = (obj: any) => {
