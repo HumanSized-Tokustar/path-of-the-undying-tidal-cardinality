@@ -265,7 +265,7 @@ export class Game {
   private comboTimer = 0; private comboCount = 0;
   private dmgRecentTimer = 0; private dmgRecent = 0;
   private totalDmg = 0;
-  private kills = 0; private bossKills = 0;
+  private kills = 0; private bossKills = 0; private lifestealCounter = 0;
   private coins = 100; private tokens = 1; private crystals = 0;
   private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
@@ -488,7 +488,7 @@ export class Game {
     this.platforms = []; this.enemies = []; this.bullets = []; this.particles = []; this.pickups = [];
     this.comboTimer = 0; this.comboCount = 0;
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
-    this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
+    this.totalDmg = 0; this.kills = 0; this.bossKills = 0; this.lifestealCounter = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
@@ -1883,6 +1883,21 @@ export class Game {
         this.comboCount++; this.comboTimer = 3;
         audio.play("kill");
         this.dropLoot(e);
+        // Wave 13: LIFESTEAL — every 8th kill restores 10 HP
+        this.lifestealCounter++;
+        if (this.lifestealCounter >= 8) {
+          this.lifestealCounter = 0;
+          const heal = Math.min(10, this.pMaxHp - this.pHp);
+          if (heal > 0) {
+            this.pHp += heal;
+            this.flashDescription(`LIFESTEAL +${heal} HP`);
+            for (let i = 0; i < 10; i++) this.particles.push({
+              x: this.px + this.pw/2, y: this.py + this.ph/2,
+              vx: rand(-80, 80), vy: rand(-160, -40),
+              life: 0.7, max: 0.7, color: "#7bff8a", size: 3, gravity: 200,
+            });
+          }
+        }
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({
           x: e.x, y: e.y + e.h/2, vx: rand(-260, 260), vy: rand(-220, -40),
