@@ -1285,7 +1285,7 @@ export class Game {
         // Press button: spawn a green bomb falling from sky onto target spot
         const tx = this.px + this.pw/2 + this.pFacing * 120;
         this.bullets.push({
-          x: tx, y: this.camY ?? 0, vx: 0, vy: 520,
+          x: tx, y: -40, vx: 0, vy: 520,
           dmg: 900, life: 3.0, friendly: true, r: 12, pierce: 99,
           color: "#39ff14", kind: "napalm", source: "the_button" as any,
         });
