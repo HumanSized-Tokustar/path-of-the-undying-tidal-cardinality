@@ -5,7 +5,7 @@ export type WeaponId =
   | "sniper" | "portalgun" | "rocket" | "gold_machine_gun"
   | "oiler" | "flamethrower" | "katana" | "yamato" | "gauntlet"
   | "medkit" | "napalm" | "shockwave" | "lightning_rod" | "disco_bomb"
-  | "disposable_shield" | "obliterator_ray";
+  | "disposable_shield" | "obliterator_ray" | "the_button";
 
 export interface WeaponDef {
   id: WeaponId;
@@ -51,6 +51,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   disco_bomb: { id:"disco_bomb", name:"Disco Bomb", kind:"thrown", class:"misc", dmg:0, fireCd:1.20, spread:0, pellets:0, speed:320, ammoPerShot:0, pierce:99, color:"#ff4fd8", visual:"multicolored ball", desc:"Forces enemies to jump dance, unable to attack, for 6s." },
   disposable_shield: { id:"disposable_shield", name:"Disposable Shield", kind:"thrown", class:"misc", deploy:true, dmg:0, fireCd:1.00, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:0, color:"#3b82f6", visual:"black and blue shield", desc:"Places a 10s barrier blocking all attacks." },
   obliterator_ray: { id:"obliterator_ray", name:"Obliterator Ray", kind:"thrown", class:"misc", deploy:true, dmg:999999999, fireCd:3.00, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:99, color:"#ffffff", visual:"big white line with infinity sign", desc:"Unstoppable infinity ray. 999999999 DMG." },
+  the_button: { id:"the_button", name:"The Button", kind:"thrown", class:"misc", deploy:true, dmg:900, fireCd:2.50, spread:0, pellets:0, speed:0, ammoPerShot:0, pierce:99, color:"#9ca3af", visual:"gray cube with a red button", desc:"Press button to summon a green bomb of destruction from the sky for massive AoE damage." },
 };
 
 export const STARTING_LOADOUT: WeaponId[] = ["pistol", "smg", "shotgun"];

@@ -137,6 +137,7 @@ interface Enemy {
   dashCd?: number;
   jumpsLeft?: number;
   summonCd?: number;
+  discoUntil?: number;   // Wave 13 disco bomb: forced jump-only, no attacking, no movement
 }
 
 export type StatusKind = "fire" | "lightning" | "enfeeble" | "freeze" | "slow" | "ultracrit";
@@ -265,7 +266,7 @@ export class Game {
   private comboTimer = 0; private comboCount = 0;
   private dmgRecentTimer = 0; private dmgRecent = 0;
   private totalDmg = 0;
-  private kills = 0; private bossKills = 0;
+  private kills = 0; private bossKills = 0; private lifestealCounter = 0;
   private coins = 100; private tokens = 1; private crystals = 0;
   private ammo = 240; private miscAmmo = 5;
   private timeAlive = 0;
@@ -488,7 +489,7 @@ export class Game {
     this.platforms = []; this.enemies = []; this.bullets = []; this.particles = []; this.pickups = [];
     this.comboTimer = 0; this.comboCount = 0;
     this.dmgRecentTimer = 0; this.dmgRecent = 0;
-    this.totalDmg = 0; this.kills = 0; this.bossKills = 0;
+    this.totalDmg = 0; this.kills = 0; this.bossKills = 0; this.lifestealCounter = 0;
     this.coins = 100 * pm; this.tokens = 1; this.crystals = 0;
     this.ammo = 240 * pm; this.miscAmmo = 10 * pm; // 5 per equipped misc slot × 2 slots
     this.timeAlive = 0; this.spawnTimer = 3.5;
@@ -1027,7 +1028,17 @@ export class Game {
       if (b.x < this.camX - 100 || b.x > this.camX + W + 200) return false;
       if (b.r >= 8 && b.y > GROUND_Y) {
         if (b.kind === "oil") this.hazards.push({ kind:"oil", x:b.x, y:GROUND_Y, life:6 });
-        else { this.explode(b.x, b.y, b.dmg, b.kind === "napalm" ? 110 : 90, b.source); if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<120 && this.addStatus(e,"fire",5,{dps:20})); }
+        else if (b.kind === "disco") {
+          // Place a disco hazard that pulses for 5s; affected enemies forced jump-only.
+          this.hazards.push({ kind:"disco", x:b.x, y:GROUND_Y - 16, life:5 });
+          this.screenShake = Math.max(this.screenShake, 4);
+        }
+        else {
+          const isButton = (b.source as any) === "the_button";
+          const radius = isButton ? 180 : (b.kind === "napalm" ? 110 : 90);
+          this.explode(b.x, b.y, b.dmg, radius, b.source);
+          if (b.kind === "napalm") this.enemies.forEach(e => Math.hypot(e.x-b.x,e.y-b.y)<radius && this.addStatus(e,"fire",5,{dps:20}));
+        }
         return false;
       }
       if (b.friendly) {
@@ -1281,6 +1292,16 @@ export class Game {
         this.screenShake = Math.max(this.screenShake, 10);
         for (const e of this.enemies) if (Math.sign(e.x - this.px) === this.pFacing && Math.abs(e.y - this.py) < 110) this.damageEnemy(e, 999999999);
         this.flashDescription("OBLITERATOR RAY ∞");
+      } else if (w.id === "the_button") {
+        // Press button: spawn a green bomb falling from sky onto target spot
+        const tx = this.px + this.pw/2 + this.pFacing * 120;
+        this.bullets.push({
+          x: tx, y: -40, vx: 0, vy: 520,
+          dmg: 900, life: 3.0, friendly: true, r: 12, pierce: 99,
+          color: "#39ff14", kind: "napalm", source: "the_button" as any,
+        });
+        this.flashDescription("THE BUTTON — Green bomb incoming");
+        this.screenShake = Math.max(this.screenShake, 6);
       }
       else if ((w.id as any) === "smoke") {
         // FLASHBANG: bright flash + stun all enemies in large radius
@@ -1644,6 +1665,25 @@ export class Game {
         return e.hp > 0;
       }
 
+      // Wave 13: DISCO BOMB — forced jump-only, no movement, no attacking for 5s
+      const _discoNow = performance.now() / 1000;
+      if (e.discoUntil && e.discoUntil > _discoNow) {
+        e.vx = 0;
+        e.fireCd = Math.max(e.fireCd, 0.5);
+        e.vy += 1700 * dt;
+        if (e.onGround) {
+          e.vy = -360 - Math.random() * 80;
+          e.onGround = false;
+        }
+        e.y += e.vy * dt;
+        if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
+        if (Math.random() < 0.4) this.particles.push({
+          x: e.x, y: e.y, vx: rand(-40, 40), vy: rand(-60, -10),
+          life: 0.4, max: 0.4, color: `hsl(${(this.animTime * 200 + e.x) % 360} 90% 60%)`, size: 2,
+        });
+        return e.hp > 0 || e.dying;
+      }
+
       // If thrown: arc + collide
       if (e.thrown) {
         e.throwVy += 1700 * dt;
@@ -1883,6 +1923,21 @@ export class Game {
         this.comboCount++; this.comboTimer = 3;
         audio.play("kill");
         this.dropLoot(e);
+        // Wave 13: LIFESTEAL — every 8th kill restores 10 HP
+        this.lifestealCounter++;
+        if (this.lifestealCounter >= 8) {
+          this.lifestealCounter = 0;
+          const heal = Math.min(10, this.pMaxHp - this.pHp);
+          if (heal > 0) {
+            this.pHp += heal;
+            this.flashDescription(`LIFESTEAL +${heal} HP`);
+            for (let i = 0; i < 10; i++) this.particles.push({
+              x: this.px + this.pw/2, y: this.py + this.ph/2,
+              vx: rand(-80, 80), vy: rand(-160, -40),
+              life: 0.7, max: 0.7, color: "#7bff8a", size: 3, gravity: 200,
+            });
+          }
+        }
         // glint particles
         for (let i = 0; i < 8; i++) this.particles.push({
           x: e.x, y: e.y + e.h/2, vx: rand(-260, 260), vy: rand(-220, -40),
@@ -1935,7 +1990,11 @@ export class Game {
         }
       }
       if (h.kind === "disco") {
-        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 150) { e.disabled = Math.max(e.disabled, 6); e.vy = e.onGround ? -260 : e.vy; }
+        const now = performance.now() / 1000;
+        for (const e of this.enemies) if (!e.dying && Math.hypot(e.x - h.x, e.y - h.y) < 170) {
+          e.discoUntil = Math.max(e.discoUntil ?? 0, now + 5);
+          e.fireCd = Math.max(e.fireCd, 5);
+        }
       }
       if ((h.kind === "portalA" || h.kind === "portalB") && h.pair) {
         const tryTeleport = (obj: any) => {
