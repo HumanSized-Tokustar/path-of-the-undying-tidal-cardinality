@@ -1923,8 +1923,27 @@ export class Game {
       return e.hp > 0 || e.dying;
     });
     if (this.grabbed && (!this.enemies.includes(this.grabbed) || this.grabbed.dying)) this.grabbed = null;
-  }
+      }
 
+      // Wave 13: DISCO BOMB — forced jump-only, no movement, no attacking
+      const _discoNow = performance.now() / 1000;
+      if (e.discoUntil && e.discoUntil > _discoNow) {
+        e.vx = 0;
+        e.fireCd = Math.max(e.fireCd, 0.5);
+        e.vy += 1700 * dt;
+        if (e.onGround) {
+          e.vy = -360 - Math.random() * 80;
+          e.onGround = false;
+        }
+        e.y += e.vy * dt;
+        if (e.y + e.h >= GROUND_Y) { e.y = GROUND_Y - e.h; e.vy = 0; e.onGround = true; }
+        // sparkle
+        if (Math.random() < 0.4) this.particles.push({
+          x: e.x, y: e.y, vx: rand(-40, 40), vy: rand(-60, -10),
+          life: 0.4, max: 0.4, color: `hsl(${(this.animTime * 200 + e.x) % 360} 90% 60%)`, size: 2,
+        });
+        return e.hp > 0 || e.dying;
+      }
 
   private addStatus(e: Enemy, kind: StatusKind, dur: number, data?: any) {
     if (!e.statuses) e.statuses = [];
