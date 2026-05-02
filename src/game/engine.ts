@@ -2394,7 +2394,7 @@ export class Game {
       ctx.strokeStyle = "rgba(123,224,255,0.6)";
       ctx.lineWidth = 1;
       ctx.strokeRect(sx, GROUND_Y - 120, l.w, 120);
-      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#8a5a3a";
+      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#3a4a8a";
       ctx.fillStyle = col;
       ctx.fillRect(sx + 30, GROUND_Y - 80, l.w - 60, 80);
       ctx.fillStyle = "#1a1a2e";
@@ -2403,7 +2403,7 @@ export class Game {
       ctx.fillRect(sx + l.w/2 - 8, GROUND_Y - 110, 16, 14);
       ctx.fillStyle = "#0a0e1f";
       ctx.font = "10px monospace";
-      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "SHADY GUY";
+      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "UPGRADE SHOP";
       ctx.fillText(label, sx + 20, GROUND_Y - 96);
     }
 
