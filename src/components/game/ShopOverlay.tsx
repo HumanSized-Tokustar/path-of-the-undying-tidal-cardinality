@@ -4,7 +4,7 @@ import { MAIN_SHOP, ALLIES, AUGMENT_SHOP, ShopItem, AllyDef, AugmentDef } from "
 import { STATUS_AUGMENTS } from "@/game/engine";
 import { audio } from "@/game/audio";
 
-type ShopKind = "main" | "ally" | "shady";
+type ShopKind = "main" | "ally" | "upgrade";
 const PAGE_SIZE = 6;
 
 export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStats; kind: ShopKind }) => {
@@ -15,7 +15,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
     : kind === "ally"
     ? { bg: "#1d6a3a", header: "#7bff8a", border: "#7bff8a", text: "#fff7d6", accent: "#7bff8a" }
     : { bg: "#3a1a6a", header: "#d97bff", border: "#d97bff", text: "#fff7d6", accent: "#d97bff" };
-  const title = kind === "main" ? "MAIN SHOP" : kind === "ally" ? "ALLY SHOP" : "AUGMENT SHOP (UPGRADE)";
+  const title = kind === "main" ? "MAIN SHOP" : kind === "ally" ? "ALLY SHOP" : "UPGRADE SHOP";
 
   const canAfford = (cost: number, cur: "coins"|"tokens"|"crystals") =>
     (cur === "coins" ? stats.coins : cur === "tokens" ? stats.tokens : stats.crystals) >= cost;
@@ -26,7 +26,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
   const buyStatus = (sid: string, cost: number) => { if (canAfford(cost, "crystals") && game.canBuyStatusAugment(sid)) game.buyStatusAugment(sid, cost); };
 
   // Pagination
-  const list = kind === "main" ? MAIN_SHOP : kind === "shady" ? AUGMENT_SHOP : [];
+  const list = kind === "main" ? MAIN_SHOP : kind === "upgrade" ? AUGMENT_SHOP : [];
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   const visible = list.slice(page * PAGE_SIZE, (page+1) * PAGE_SIZE);
 
@@ -60,7 +60,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
       <div className="flex gap-3 items-center text-[10px]">
         {kind === "main" && <span style={{ color: "#ffd84a" }}>COINS LEFT: {Math.floor(stats.coins)}</span>}
         {kind === "ally" && <span style={{ color: "#7be0ff" }}>TOKENS LEFT: {stats.tokens}</span>}
-        {kind === "shady" && <span style={{ color: "#d97bff" }}>CRYSTALS LEFT: {stats.crystals}</span>}
+        {kind === "upgrade" && <span style={{ color: "#d97bff" }}>CRYSTALS LEFT: {stats.crystals}</span>}
         <button onClick={() => game.resume()}
           className="border px-2 py-0.5 hover:bg-white/20" style={{ borderColor: palette.text, color: palette.text }}>
           EXIT
@@ -114,7 +114,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
             </>
           )}
 
-          {kind === "shady" && (
+          {kind === "upgrade" && (
             <div className="grid grid-cols-2 gap-3">
               {/* LEFT: weapon-augment cards (existing AUGMENT_SHOP) */}
               <div>
@@ -200,7 +200,7 @@ export const ShopOverlay = ({ game, stats, kind }: { game: Game; stats: GameStat
           )}
         </div>
 
-        {(kind === "main" || kind === "shady") && pages > 1 && (
+        {(kind === "main" || kind === "upgrade") && pages > 1 && (
           <div className="flex items-center justify-center gap-2 py-2 text-[10px]" style={{ background: "#0a0e1f", color: palette.text }}>
             <button onClick={() => setPage(p => Math.max(0, p-1))} className="border px-2 py-1 hover:bg-white/20" style={{ borderColor: palette.text }}>◀</button>
             <div>PAGE {page+1} / {pages}</div>
