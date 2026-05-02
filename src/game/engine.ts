@@ -11,7 +11,7 @@ import { actionFor as kbActionFor, normalizeKey as kbNormalize, onKeybindsChange
 // ============================================================
 
 export type Phase = "menu" | "playing" | "paused" | "inventory" | "shop" | "dead";
-export type ShopKind = "main" | "ally" | "shady";
+export type ShopKind = "main" | "ally" | "upgrade";
 export type Difficulty = "dunce" | "alright" | "son";
 
 const W = 960;
