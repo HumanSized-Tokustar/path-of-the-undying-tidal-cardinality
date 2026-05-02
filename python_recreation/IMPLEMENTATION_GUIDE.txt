@@ -12,7 +12,7 @@ python_recreation/
     sprites/enemies/        shooter, shanker, brute, necromancer, minion, bron, giant, apache
     sprites/items/          all weapon, currency, status, misc item sprites
     sprites/allies/         lil_one, sheriff_seriff, eradidog, stalien, dude_person
-    sprites/landmarks/      main_shop, upgrade_shop, ally_shop, shady
+    sprites/landmarks/      main_shop, upgrade_shop, ally_shop
     sfx/                    shoot, hit, jump, dash, roll, parry, throw, explode, purchase
     music/                  looped tracks
 
