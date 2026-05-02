@@ -23,7 +23,7 @@ const mechanics: { title: string; color: string; text: string }[] = [
   { title: "Movement", color: "#7be0ff", text: "Run, double-jump, dash (cyan trail, 0.22s), roll (1.18× speed). Ladders auto-detected. Parry with E during enemy fire to deflect bullets." },
   { title: "Combat Pace", color: "#ffd84a", text: "Player base 9.2 m/s, max 26 m/s. Pace ramps with distance every 900m. Enemies catch up with paceCatchup; SON cap 1.85×, ALRIGHT 1.6×, DUNCE 1.4×." },
   { title: "Spawn System", color: "#ff8c42", text: "Tide tiers every 666m. DUNCE: base 4 +3/tier, cap 8. ALRIGHT: 6 +5, cap 18. SON: 10 +8, cap 36. Every 5th tier shows (THE TIDE RISES). Spawns lead the player at high speed." },
-  { title: "Shops", color: "#a78bfa", text: "Main shop every 1234m (purple), Ally shop every 1667m (green), Shady Guy every 3333m (orange). 9m safe-zone freezes enemies near each shop." },
+  { title: "Shops", color: "#a78bfa", text: "Main shop every 1234m (purple) with an Upgrade shop adjacent (indigo, crystals/runes + status effects). Ally shop every 1667m (green). 9m safe-zone freezes enemies near each shop." },
   { title: "Currencies", color: "#ffea84", text: "Coins from kills (heavy enemies drop 120-480, normal 50-100). Tokens from coin-conversion at shops. Crystals drop rarely from elites." },
   { title: "Status Effects", color: "#d97bff", text: STATUS_AUGMENTS.map(s => `${s.name}: ${s.desc}`).join(" | ") + ". Burn DoT +15%. Slow ×0.4. Enfeeble damage ×0.18." },
   { title: "Safe Zones", color: "#7bff8a", text: "Within 9 meters of any shop center, enemies cannot enter or fire. Perfect for re-stocking and planning." },
