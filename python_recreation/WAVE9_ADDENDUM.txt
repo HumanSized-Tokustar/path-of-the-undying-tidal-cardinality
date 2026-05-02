@@ -79,10 +79,9 @@ Where assets came from:
 
 8) MAP INFO
    Add a "MAP INFO" entry to the start menu listing:
-     MAIN SHOP   - every 1234m
-     ALLY SHOP   - every 1667m
-     SHADY GUY   - every 3333m
-     BOSS ARENA  - every 5555m
+     MAIN SHOP    - every 1234m (with adjacent UPGRADE SHOP)
+     ALLY SHOP    - every 1667m
+     BOSS ARENA   - every 5555m
    Note that standing within 9 m of any shop is a SAFE ZONE.
 
 That's it for Wave 9. The full game.py rewrite + per-boss AI port is
