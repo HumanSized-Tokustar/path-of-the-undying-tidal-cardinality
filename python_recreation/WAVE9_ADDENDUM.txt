@@ -58,9 +58,9 @@ Where assets came from:
    status_attack_mul() helpers when computing enemy movement / touch dmg.
 
 4) SHOPS (3 surfaces, 3 palettes — see Screenshot mockups)
-     MAIN  : yellow #ffd84a on blue #1a3aa8, "COINS LEFT: N", 3-col grid
-     ALLY  : green  #7bff8a on dark green #1d6a3a, horizontal scroll
-     SHADY : purple #d97bff on dark purple #3a1a6a, runes left + status right
+     MAIN    : yellow #ffd84a on blue #1a3aa8, "COINS LEFT: N", 3-col grid
+     ALLY    : green  #7bff8a on dark green #1d6a3a, horizontal scroll
+     UPGRADE : purple #d97bff on dark purple #3a1a6a, runes left + status right
    Open with T at a landmark, ESC to close. ENTER on selected card buys it
    AND plays apple_pay.wav. First click selects, second click buys.
 
