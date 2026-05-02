@@ -11,7 +11,7 @@ import { actionFor as kbActionFor, normalizeKey as kbNormalize, onKeybindsChange
 // ============================================================
 
 export type Phase = "menu" | "playing" | "paused" | "inventory" | "shop" | "dead";
-export type ShopKind = "main" | "ally" | "shady";
+export type ShopKind = "main" | "ally" | "upgrade";
 export type Difficulty = "dunce" | "alright" | "son";
 
 const W = 960;
@@ -298,12 +298,11 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"upgrade"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
   private nextMainAt = 1234;
   private nextAllyAt = 1667;
-  private nextShadyAt = 3333;
   private maxDashCharges = 2;
   private maxRollCharges = 2;
   private maxHpBonusBought = 0;
@@ -504,7 +503,7 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
-    this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
+    this.nextMainAt = 1234; this.nextAllyAt = 1667;
     this.maxHpBonusBought = 0; this.reviveBuys = 0; this.purchaseCounts = {}; this.allies = []; this.hazards = []; this.portalPending = null;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
@@ -564,7 +563,7 @@ export class Game {
     if (this.phase !== "playing") return;
     // Find nearest landmark the player overlaps
     const pCx = this.px + this.pw/2;
-    const near = this.landmarks.find(l => pCx >= l.x && pCx <= l.x + l.w && (l.kind === "main" || l.kind === "ally" || l.kind === "shady"));
+    const near = this.landmarks.find(l => pCx >= l.x && pCx <= l.x + l.w && (l.kind === "main" || l.kind === "ally" || l.kind === "upgrade"));
     if (!near) { this.flashDescription("No shop nearby."); return; }
     this.currentShopKind = near.kind as ShopKind;
     this.phase = "shop";
@@ -1176,8 +1175,8 @@ export class Game {
       // Main + Augment together every 1234m
       while (metersNow + 60 >= this.nextMainAt) {
         const lx = this.nextMainAt * PX_PER_METER;
-        this.landmarks.push({ x: lx,        kind: "main",  w: 220 });
-        this.landmarks.push({ x: lx + 280,  kind: "shady", w: 200 }); // augment / upgrade adjacent
+        this.landmarks.push({ x: lx,        kind: "main",    w: 220 });
+        this.landmarks.push({ x: lx + 280,  kind: "upgrade", w: 200 }); // augment / upgrade adjacent
         this.nextMainAt += 1234;
       }
       // Ally shop every 1667m
@@ -1185,12 +1184,6 @@ export class Game {
         const lx = this.nextAllyAt * PX_PER_METER;
         this.landmarks.push({ x: lx, kind: "ally", w: 220 });
         this.nextAllyAt += 1667;
-      }
-      // Shady cart every 3333m (extra discount augments — same shop kind)
-      while (metersNow + 60 >= this.nextShadyAt) {
-        const lx = this.nextShadyAt * PX_PER_METER;
-        this.landmarks.push({ x: lx, kind: "shady", w: 200 });
-        this.nextShadyAt += 3333;
       }
     }
     this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
@@ -2401,7 +2394,7 @@ export class Game {
       ctx.strokeStyle = "rgba(123,224,255,0.6)";
       ctx.lineWidth = 1;
       ctx.strokeRect(sx, GROUND_Y - 120, l.w, 120);
-      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#8a5a3a";
+      const col = l.kind === "main" ? "#5a3a8a" : l.kind === "ally" ? "#3a8a5a" : "#3a4a8a";
       ctx.fillStyle = col;
       ctx.fillRect(sx + 30, GROUND_Y - 80, l.w - 60, 80);
       ctx.fillStyle = "#1a1a2e";
@@ -2410,7 +2403,7 @@ export class Game {
       ctx.fillRect(sx + l.w/2 - 8, GROUND_Y - 110, 16, 14);
       ctx.fillStyle = "#0a0e1f";
       ctx.font = "10px monospace";
-      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "SHADY GUY";
+      const label = l.kind === "main" ? "MAIN SHOP" : l.kind === "ally" ? "ALLY SHOP" : "UPGRADE SHOP";
       ctx.fillText(label, sx + 20, GROUND_Y - 96);
     }
 

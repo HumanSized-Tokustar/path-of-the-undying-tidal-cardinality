@@ -1,129 +1,123 @@
-# Wave 11 Polish: Allies, Balance, Sprites, Almanac, Speed
 
-Five focused passes across `src/game/engine.ts`, `src/game/shops.ts`, and `src/components/game/AlmanacOverlay.tsx`. No new files; no schema changes.
+## Goal
 
----
-
-## 0) Ally Overhaul — follow you everywhere, smarter, deadlier, prettier
-
-In `updateAllies` (engine.ts ~1932) and ally render block (~2595–2603):
-
-- **Always follow the player**, not just enemies. Replace target priority: if no enemy within ~700px, follow tight to player at `leashX`. If enemy within 700px, engage but periodically re-anchor toward player so they never get left behind.
-- **Teleport leash tightened**: snap to player when `|dx| > 380` (was 520) OR when offscreen. Also snap vertically when player is on a high platform for >0.6s.
-- **Smarter combat**:
-  - Lead targets (predict by `target.vx * 0.15`).
-  - Add line-of-sight friendly fire avoidance: skip shot if player is between ally and target.
-  - Reduce fire cooldowns ~20% (Lil One 0.55, Sheriff 0.7, Eradidog 0.45, STAlien 0.7).
-  - Add melee lunge for Lil One (small dash when `|dx| < 90`).
-- **Damage buff** (in `ALLIES`):
-  - Lil One dmg 10 → 20
-  - Sheriff dmg 79 → 110
-  - Eradidog dmg 59 → 95 (rocket AoE radius 80 added in engine via `explode` on hit)
-  - STAlien dmg 100 → 140, orbital cooldown 20 → 14, radius 120 → 160
-  - Dude unchanged (already infinite)
-- **Sprite + animation polish** in render pass (~2585–2610):
-  - Add bobbing already exists; add per-type details:
-    - **Lil One**: tiny held sword that swings on attack frame (rotate via `Math.sin(animTime*8)` when `fireCd > 0.4`).
-    - **Sheriff**: cowboy hat brim (extra rect), animated revolver muzzle flash on shot.
-    - **Eradidog**: 4 leg rects animated with `Math.sin(animTime*12)`, rocket exhaust trail particles when moving.
-    - **STAlien**: pulsing orbital ring (`arc` radius oscillates), antenna with blinking tip.
-    - **Dude**: red cap visible, fist trail on attack.
-  - Add a subtle ally aura ring (faint colored circle) so they're easy to spot.
+1. Remove the **Shady Guy** rare landmark (the 3333m orange cart) entirely from the game.
+2. Keep the upgrade/augment shop that currently spawns *next to* every main shop — it just shouldn't be called "shady" anymore.
+3. Update all game `src/components/game/*` UI files so nothing still references Shady Guy.
+4. Give you a clear, copy-pasteable guide for converting this React/TS game into a runnable Pygame CE project.
 
 ---
 
-## 1) Balance Pass
+## Part 1 — Code changes
 
-**Enemy spawn scaling** (engine.ts ~1071–1106): retune so each difficulty feels distinct.
+### `src/game/engine.ts`
+- Replace the `ShopKind` union: `"main" | "ally" | "shady"` → `"main" | "ally" | "upgrade"`.
+- Rename the `landmarks` array kind, the `nextShadyAt` field, and the reset line (line 507) — drop `nextShadyAt` entirely.
+- Delete the whole "Shady cart every 3333m" block (lines ~1189–1193).
+- Change the adjacent upgrade landmark spawn (line ~1180) from `kind: "shady"` to `kind: "upgrade"`.
+- Update the proximity check on line 567 to use `"upgrade"` instead of `"shady"`.
+- Update the landmark draw routine so the `"upgrade"` kind keeps its current indigo/upgrade-shop sprite (no orange tent).
 
-| Difficulty | Base allowance | Per-tier add | Screen cap | Spawn interval |
-|---|---|---|---|---|
-| DUNCE | 4 | +3 | 8 | 1.4–1.8s |
-| ALRIGHT | 6 | +5 | 18 | 1.0–1.5s |
-| SON | 10 | +8 | 36 | 0.55–1.2s |
+### `src/game/shops.ts`
+- No data changes needed; `AUGMENT_SHOP` stays. Just confirm it's still exported.
 
-Replace fixed `5 + tier*6` with `base + tier*step` per difficulty. Lower the SON screenCap from 42 → 36, ALRIGHT 24 → 18.
+### `src/components/game/ShopOverlay.tsx`
+- Replace `type ShopKind = "main" | "ally" | "shady"` with `"main" | "ally" | "upgrade"`.
+- Replace every `kind === "shady"` check with `kind === "upgrade"` (lines 29, 63, 117, 203).
+- Update the header label from "SHADY GUY" to "UPGRADE SHOP".
 
-**Nerf enemy jumping** (~1828–1840):
-- `jumpsLeft` reset: dunce=1, alright=2, son=3 (was 3/3/4).
-- `jumpChance` halved: `(0.009 + (paceFactor-0.7)*0.009) * espd`.
-- Jump impulse `-520` → `-440`, pace bonus `90` → `60`.
-- `jumpCd` floor raised: 0.5s → 0.7s minimum.
+### `src/components/game/StartScreen.tsx`
+- Remove the `🎩 SHADY GUY — every 3333m` legend line (line 115).
 
-**Weapon damage tweaks** (`weapons.ts`):
-- Flamethrower 6 → 9 (still tick-heavy)
-- Gold MG 10 → 8 (fire rate is the value)
-- Sniper CD 0.75 → 0.65
-- Disco bomb duration desc clarified
-- Rocket splash radius unchanged
+### `src/components/game/AlmanacOverlay.tsx`
+- Update the "Shops" entry (line 26): drop the Shady Guy mention, describe only Main + Ally + Upgrade shops.
 
-**Shop prices** (`shops.ts`):
-- Gold MG 5555 → 7777 (it's strong)
-- Yamato 10000 → 8500
-- Gauntlet 9000 → 7500
-- Lightning Rod 3000 → 2500
-- Disco Bomb 4000 → 3500
-
-**Status effects**: bump `statusAttackMul` reductions from disabled enemies +10%; freeze slow 0.5 → 0.4; burn DoT +15%.
+### `src/pages/Index.tsx`
+- The `currentShopKind` cast still works; no edit required, but verify after the engine change.
 
 ---
 
-## 2) Sprite & Animation Polish (Melee + Misc)
+## Part 2 — Update the Python translation
 
-In the player weapon render (search `w.id === "katana"` etc., ~2400–2550 area) and projectile renderers:
-
-- **Knife**: short white blade with brown grip; quick 0→90° arc swipe over 0.18s.
-- **Katana**: long gray blade, two-handed grip overlay, full 180° sweeping arc with motion-trail (3 ghost copies fading).
-- **Yamato**: cyan glint shader (white-blue gradient stripe along blade animated), suspends-enemy now shows yellow upward arrow particles on hit.
-- **Gauntlet**: two visible gloves alternate punches (use `animTime` parity), shockwave ring on impact, on triple-press shows orange knuckle flash.
-- **Misc polish**:
-  - **Napalm**: spinning bottle (rotate via animTime), green trail; on detonate spawn 5 fire patches that tick burn.
-  - **Shockwave plate**: pulsing concentric rings; trigger now reliably leaps player AND enemies (currently only enemies sometimes — fix in update logic).
-  - **Lightning Rod**: tesla coil base + animated zap arcs to nearest enemies; chain to other rods rendered as jagged polyline.
-  - **Disco Bomb**: rotating multicolor orb (HSL cycling), affected enemies render with rainbow tint and forced jump bob.
-  - **Disposable Shield**: blue-black layered rect with shimmer animation; clearly blocks bullets visually (consume bullets that intersect).
-  - **Obliterator Ray**: thick white beam with glow + ∞ symbol at muzzle, screen flash on use.
+Update the existing `python_recreation/` reference docs so they match the new game:
+- `IMPLEMENTATION_GUIDE.txt`: remove the "Shady every 3333m" line and the `shady` landmark folder reference.
+- `SPRITE_GUIDE.txt`: drop `landmarks/shady.png`.
+- `WAVE9_ADDENDUM.txt`: remove the `next_shady_at` block.
+- `wave13_translation.py`: remove `next_shady_at`, the shady spawn loop, and rename remaining "shady" landmark kind to `"upgrade"`.
 
 ---
 
-## 3) Almanac Expansion
+## Part 3 — How to convert this game to Pygame CE
 
-Rewrite `src/components/game/AlmanacOverlay.tsx`:
+You already have a working scaffold at `python_recreation/wave13_translation.py`. Here's the full workflow to actually run it:
 
-- Add full enemy list with sprites (small canvas swatch per enemy using its color/visual): Shooter, Shanker, Shanker Swift, Brute, Rider, Necromancer, Minion, THE BRON, GIANT, APACHE, plus boss notes.
-- Add **Ally** cards with stat block (HP/DMG/Lifespan/Ability) and visual swatch.
-- Add **Status Effects** section listing each augment with what weapons can carry it.
-- Add **Mechanics** subsections:
-  - Movement (dash, roll, double jump, ladders, parry).
-  - Shops (Main / Ally / Shady — distance schedule 1234m / 1667m / 3333m).
-  - Tide system (every 666m, every 5th = TIDE RISES).
-  - Currencies (coins from kills, tokens from shop, crystals from elites).
-- Two-column responsive grid stays; add a small `<Sprite>` mini-canvas component that draws a colored rect with eye/visual hint per entry.
+### Step 1 — Install Python + Pygame CE
+```bash
+# Python 3.10+ recommended
+python -m pip install --upgrade pip
+python -m pip install pygame-ce
+```
+
+### Step 2 — Project layout
+```text
+python_recreation/
+  wave13_translation.py     # main game (already generated)
+  game.py                   # older scaffold, optional
+  keybinds.json             # key mapping
+  assets/
+    sprites/
+      player/
+      enemies/
+      items/
+      allies/
+      landmarks/            # main_shop, upgrade_shop, ally_shop  (no shady)
+    sfx/
+    music/
+```
+
+### Step 3 — Mapping TS → Pygame CE
+| Web game (TS)                      | Pygame CE equivalent                              |
+|-----------------------------------|---------------------------------------------------|
+| `<canvas>` + `ctx.fillRect`       | `pygame.Surface` + `pygame.draw.rect`             |
+| `requestAnimationFrame` loop      | `while running:` + `clock.tick(60)`               |
+| `keydown` / `keyup` events        | `pygame.event.get()` with `KEYDOWN` / `KEYUP`     |
+| `Audio` API (`src/game/audio.ts`) | `pygame.mixer.Sound("assets/sfx/x.wav").play()`   |
+| TS interfaces (Enemy, Bullet…)    | `@dataclass` classes                              |
+| `Math.hypot`, `Math.atan2`        | `math.hypot`, `math.atan2`                        |
+| Camera `camX`                     | subtract `cam_x` when blitting                    |
+
+### Step 4 — Port the engine in this order
+1. **Window + main loop** — open a 960×540 window, dt-based update.
+2. **Player** — movement, jump, dash, gravity (mirror constants from `engine.ts`: `PLAYER_BASE_MS`, `PLAYER_MAX_MS`, gravity).
+3. **Enemies + spawner** — copy the difficulty tables (`spawn_base/step/cap`) for DUNCE / ALRIGHT / SON.
+4. **Weapons + bullets** — port `WEAPONS` from `src/game/weapons.ts` as a Python dict.
+5. **Shops** — Main, Ally, Upgrade (skip Shady — it no longer exists).
+6. **Allies** — Lil One unlimited, others as in `shops.ts`.
+7. **HUD + Almanac** — render with `pygame.font`.
+8. **Audio** — wire `pygame.mixer` to the same SFX names used in `audio.ts`.
+
+### Step 5 — Run it
+```bash
+cd python_recreation
+python wave13_translation.py
+```
+
+### Step 6 — Tips
+- Keep one source-of-truth for numbers: paste TS constants verbatim into a `constants.py`.
+- Use procedural rectangles first, drop in PNGs later (the existing engine already does fallback shapes).
+- For pixel-art crispness, set `pygame.display.set_mode((960,540), pygame.SCALED)` and use integer positions when blitting.
 
 ---
 
-## 4) Faster Player Movement (without breaking spawn pacing)
+## Files touched
 
-Constants (engine.ts ~22):
-- `PLAYER_BASE_MS` 7.2 → **8.4**
-- `PLAYER_MAX_MS` 21 → **24**
-- `PLAYER_ACCEL` 1850 → **2150**
-- `DASH_SPEED_MULT` 2.2 → **2.5**
-- `DASH_RECHARGE` 2.35 → **2.0**
+- `src/game/engine.ts` (remove Shady spawn, rename kind to "upgrade")
+- `src/components/game/ShopOverlay.tsx`
+- `src/components/game/StartScreen.tsx`
+- `src/components/game/AlmanacOverlay.tsx`
+- `python_recreation/IMPLEMENTATION_GUIDE.txt`
+- `python_recreation/SPRITE_GUIDE.txt`
+- `python_recreation/WAVE9_ADDENDUM.txt`
+- `python_recreation/wave13_translation.py`
 
-Spawn-system insulation so faster speed doesn't outrun waves:
-- Spawn pacing already uses `speedRatio`. Add a **forward spawn offset**: spawn enemies at `camX + W + 60 + pvx * 0.35` (lead the player) so they appear sooner at high speed.
-- Increase `spawnClock` ceiling 1.65 → **2.1** and lower interval floor 0.58 → **0.42** in SON / **0.55** in ALRIGHT.
-- Cap minimum burst at high speed: `burst = max(2, …)` when `speedRatio > 1.2`.
-- Pace catchup for enemies already scales with `playerPaceFactor`; raise SON cap 1.7 → **1.85**, ALRIGHT 1.48 → **1.6** so enemies keep up after the speed buff.
-
----
-
-## Files Touched
-
-- `src/game/engine.ts` — speed constants, spawn scaling per difficulty, jump nerf, ally AI/render, melee+misc polish, status tweaks, shockwave fix, spawn lead-offset.
-- `src/game/shops.ts` — ally damage buffs, shop price tweaks.
-- `src/game/weapons.ts` — small damage/CD tweaks.
-- `src/components/game/AlmanacOverlay.tsx` — full expansion with sprite swatches.
-
-No new dependencies, no database changes.
+No database, no auth, no new dependencies.

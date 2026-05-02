@@ -12,7 +12,7 @@ python_recreation/
     sprites/enemies/        shooter, shanker, brute, necromancer, minion, bron, giant, apache
     sprites/items/          all weapon, currency, status, misc item sprites
     sprites/allies/         lil_one, sheriff_seriff, eradidog, stalien, dude_person
-    sprites/landmarks/      main_shop, upgrade_shop, ally_shop, shady
+    sprites/landmarks/      main_shop, upgrade_shop, ally_shop
     sfx/                    shoot, hit, jump, dash, roll, parry, throw, explode, purchase
     music/                  looped tracks
 
@@ -38,7 +38,7 @@ ENEMIES
 - APACHE: SON only after 1700m, helicopter, 500 HP, flies, bullets/rockets.
 
 SHOPS
-- Main Shop every 1234m, Upgrade Shop beside it, Ally Shop every 1667m, Shady every 3333m.
+- Main Shop every 1234m, Upgrade Shop beside it, Ally Shop every 1667m. (Shady Guy removed.)
 - Safe zone: 9 meter radius around shop center blocks enemy spawning and enemy AI entry.
 - Main Shop uses coins. Ranged/melee buy once. Misc can be bought 10 times.
 - Upgrade Shop uses crystals: Fire 10, Lightning Chain 76, Enfeeble 100, Freeze 105, Slow 90, Ultracrit 125, plus Ammo +50/+150, Max HP +50 up to +500, Extra Dash once, Extra Revive twice.

@@ -15,20 +15,20 @@ Where assets came from:
 - Music: any .ogg/.wav files in assets/music/ play in shuffle order.
 
 1) LANDMARK SYSTEM (replace previous one)
-   Track three counters in your World class (in meters):
-     next_main_at  = 1234     # main shop + adjacent augment shop
+   Track these counters in your World class (in meters):
+     next_main_at  = 1234     # main shop + adjacent upgrade shop
      next_ally_at  = 1667
-     next_shady_at = 3333
      next_boss_at  = 5555     # arena
    On each frame after `meters = world_x / PX_PER_METER`:
      while meters + 60 >= next_main_at:
-         landmarks.append(Landmark(kind="main",  x=next_main_at*PX_PER_METER))
-         landmarks.append(Landmark(kind="shady", x=next_main_at*PX_PER_METER + 280))
+         landmarks.append(Landmark(kind="main",    x=next_main_at*PX_PER_METER))
+         landmarks.append(Landmark(kind="upgrade", x=next_main_at*PX_PER_METER + 280))
          next_main_at += 1234
-     # repeat for ally / shady
+     # repeat for ally
    Safe zone = within 9 m (288 px) of any shop landmark center.
    While inside: do NOT spawn enemies, set enemy.frozen = True for any
    enemy already inside (skip movement + skip firing).
+   (Shady Guy landmark removed — upgrade shop is permanently adjacent to main.)
 
 2) BOSS ARENA TELEPORT
    When meters >= next_boss_at:
@@ -58,9 +58,9 @@ Where assets came from:
    status_attack_mul() helpers when computing enemy movement / touch dmg.
 
 4) SHOPS (3 surfaces, 3 palettes — see Screenshot mockups)
-     MAIN  : yellow #ffd84a on blue #1a3aa8, "COINS LEFT: N", 3-col grid
-     ALLY  : green  #7bff8a on dark green #1d6a3a, horizontal scroll
-     SHADY : purple #d97bff on dark purple #3a1a6a, runes left + status right
+     MAIN    : yellow #ffd84a on blue #1a3aa8, "COINS LEFT: N", 3-col grid
+     ALLY    : green  #7bff8a on dark green #1d6a3a, horizontal scroll
+     UPGRADE : purple #d97bff on dark purple #3a1a6a, runes left + status right
    Open with T at a landmark, ESC to close. ENTER on selected card buys it
    AND plays apple_pay.wav. First click selects, second click buys.
 
@@ -79,10 +79,9 @@ Where assets came from:
 
 8) MAP INFO
    Add a "MAP INFO" entry to the start menu listing:
-     MAIN SHOP   - every 1234m
-     ALLY SHOP   - every 1667m
-     SHADY GUY   - every 3333m
-     BOSS ARENA  - every 5555m
+     MAIN SHOP    - every 1234m (with adjacent UPGRADE SHOP)
+     ALLY SHOP    - every 1667m
+     BOSS ARENA   - every 5555m
    Note that standing within 9 m of any shop is a SAFE ZONE.
 
 That's it for Wave 9. The full game.py rewrite + per-boss AI port is

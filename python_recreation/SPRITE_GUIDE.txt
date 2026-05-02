@@ -76,5 +76,5 @@ LANDMARKS (drawn procedurally by default; override with)
   landmarks/main_shop.png       blue temple
   landmarks/augment_shop.png    indigo temple next to main
   landmarks/ally_shop.png       green chapel
-  landmarks/shady.png           orange tent
+  
   landmarks/boss_arena.png      stone colosseum

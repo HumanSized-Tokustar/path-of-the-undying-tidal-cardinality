@@ -112,7 +112,7 @@ export const StartScreen = ({ onStart, onDifficulty }: { onStart: () => void; on
               <div>🏪 <b className="text-[#ffd84a]">MAIN SHOP</b> — every <b>1234m</b> (with adjacent UPGRADE shop)</div>
               <div>🛡 <b className="text-[#d97bff]">UPGRADE SHOP</b> — spawns next to every Main Shop (crystals/runes + status effects)</div>
               <div>👥 <b className="text-[#7bff8a]">ALLY SHOP</b> — every <b>1667m</b> (tokens, timed friendly AI)</div>
-              <div>🎩 <b className="text-[#ffb347]">SHADY GUY</b> — every <b>3333m</b> (rare augments cart)</div>
+              
               <div className="pt-2 text-foreground/60">Standing within 9m of any shop = SAFE ZONE (no enemy spawns / AI suspended). Press T at a shop to enter, ENTER on a card to buy.</div>
             </div>
             <div className="mt-5"><Btn onClick={() => setView("main")}>◀ BACK</Btn></div>
