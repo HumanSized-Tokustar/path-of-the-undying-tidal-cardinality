@@ -503,7 +503,7 @@ export class Game {
     this.puDamage = 0; this.puSpeed = 0; this.puInvincible = 0; this.puChrono = 0;
     this.worldPickups = []; this.worldPickupNextX = 600;
     this.landmarks = []; this.inSafeZone = false; this.odPrevMaxHp = this.pMaxHp;
-    this.nextMainAt = 1234; this.nextAllyAt = 1667; this.nextShadyAt = 3333;
+    this.nextMainAt = 1234; this.nextAllyAt = 1667;
     this.maxHpBonusBought = 0; this.reviveBuys = 0; this.purchaseCounts = {}; this.allies = []; this.hazards = []; this.portalPending = null;
     this.miscACharge = 0; this.miscBCharge = 0;
     this.parryWindow = 0; this.parryFlash = 0; this.grabbed = null;
