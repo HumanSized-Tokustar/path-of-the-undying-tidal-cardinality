@@ -563,7 +563,7 @@ export class Game {
     if (this.phase !== "playing") return;
     // Find nearest landmark the player overlaps
     const pCx = this.px + this.pw/2;
-    const near = this.landmarks.find(l => pCx >= l.x && pCx <= l.x + l.w && (l.kind === "main" || l.kind === "ally" || l.kind === "shady"));
+    const near = this.landmarks.find(l => pCx >= l.x && pCx <= l.x + l.w && (l.kind === "main" || l.kind === "ally" || l.kind === "upgrade"));
     if (!near) { this.flashDescription("No shop nearby."); return; }
     this.currentShopKind = near.kind as ShopKind;
     this.phase = "shop";
