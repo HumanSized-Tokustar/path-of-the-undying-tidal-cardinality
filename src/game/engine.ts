@@ -1175,8 +1175,8 @@ export class Game {
       // Main + Augment together every 1234m
       while (metersNow + 60 >= this.nextMainAt) {
         const lx = this.nextMainAt * PX_PER_METER;
-        this.landmarks.push({ x: lx,        kind: "main",  w: 220 });
-        this.landmarks.push({ x: lx + 280,  kind: "shady", w: 200 }); // augment / upgrade adjacent
+        this.landmarks.push({ x: lx,        kind: "main",    w: 220 });
+        this.landmarks.push({ x: lx + 280,  kind: "upgrade", w: 200 }); // augment / upgrade adjacent
         this.nextMainAt += 1234;
       }
       // Ally shop every 1667m
@@ -1184,12 +1184,6 @@ export class Game {
         const lx = this.nextAllyAt * PX_PER_METER;
         this.landmarks.push({ x: lx, kind: "ally", w: 220 });
         this.nextAllyAt += 1667;
-      }
-      // Shady cart every 3333m (extra discount augments — same shop kind)
-      while (metersNow + 60 >= this.nextShadyAt) {
-        const lx = this.nextShadyAt * PX_PER_METER;
-        this.landmarks.push({ x: lx, kind: "shady", w: 200 });
-        this.nextShadyAt += 3333;
       }
     }
     this.landmarks = this.landmarks.filter(l => l.x + l.w > this.camX - 100);
