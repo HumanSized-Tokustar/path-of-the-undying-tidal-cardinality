@@ -298,12 +298,11 @@ export class Game {
   private puDamage = 0; private puSpeed = 0; private puInvincible = 0; private puChrono = 0;
   private worldPickups: { x:number; y:number; type: "coin"|"token"|"crystal"|"pu_dmg"|"pu_spd"|"pu_inv"|"pu_chr"; value:number }[] = [];
   private worldPickupNextX = 600;
-  private landmarks: { x:number; kind:"main"|"ally"|"shady"; w:number }[] = [];
+  private landmarks: { x:number; kind:"main"|"ally"|"upgrade"; w:number }[] = [];
   private inSafeZone = false;
   private odPrevMaxHp = 123;
   private nextMainAt = 1234;
   private nextAllyAt = 1667;
-  private nextShadyAt = 3333;
   private maxDashCharges = 2;
   private maxRollCharges = 2;
   private maxHpBonusBought = 0;
