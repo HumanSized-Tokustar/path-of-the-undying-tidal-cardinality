@@ -1,70 +1,98 @@
-# Full 1:1 Pygame CE Port
+# Modular Pygame CE Port — Rebuild Plan
 
-You asked for both options — I'll deliver **both**: a clean modular package *and* a single concatenated `ULTRAMAIN.py` so you can pick whichever is easier to drop into Pygame CE.
+The previous port collapsed everything into `ULTRAMAIN.py` with thin re-export shims. You want a real multi-file architecture with the exact filenames you specified. This plan rebuilds it properly.
 
-## Honest scope note (read this first)
+## 1. New folder layout
 
-The TS source is **~6,300 lines** across engine, weapons, shops, platforms, audio, keybinds, and 8 React overlays. A truly 1:1 port means rewriting all of it in Python. I will:
-
-- Match every gameplay number (HP, damage, speeds, spawn tables, shop prices, distances, cooldowns, lifesteal-every-8th, difficulty multipliers, ally caps removed, The Button cost 10000, Disco Bomb rework, etc.).
-- Match every system: movement/dash/roll/parry, double-jump enemies, necromancer/minion/bron/giant/apache gating, main+upgrade+ally shops at correct meter intervals, safe zones, almanac, inventory, HUD, pause, settings, death screen, start screen with difficulty select, keybinds.json hot-reload.
-- Reproduce all sprites **procedurally** using `pygame.draw` (same colored-rect/pixel-art style the canvas engine uses) so the game runs with **zero asset files required**. If you later drop PNGs into `assets/sprites/...` matching `SPRITE_GUIDE.txt`, they override the procedural fallbacks.
-- Reproduce SFX procedurally with `pygame.sndarray` + numpy (square/noise blips) so audio works with no files; drop WAVs into `assets/sfx/` to override.
-
-What will **not** be byte-identical: pixel-exact canvas anti-aliasing, browser font rendering, and React overlay CSS styling — those become Pygame-drawn HUD/menus that visually match but aren't DOM-identical.
-
-## Deliverables
-
-### Modular package (`python_recreation/port/`)
-```text
-port/
-  main.py            # entry point, game loop, phase router
-  engine.py          # Game class, update/render, camera, distance, waves
-  player.py          # player physics, dash/roll/parry/jump, lifesteal counter
-  enemies.py         # all enemy types + AI, double-jump, gated spawns
-  allies.py          # Lil One, Sheriff Seriff, Eradidog, Stalien, Dude Person
-  weapons.py         # ranged + melee + misc tables incl. The Button, Disco rework
-  shops.py           # main/upgrade/ally shop logic, prices, safe zones
-  platforms.py       # terrain generator
-  spawning.py        # 5s wave system, +6 per 666m, caps per difficulty
-  almanac.py         # data tables shared with shops/HUD
-  hud.py             # HP/ammo/coins/crystals/tokens/distance/wave readout
-  overlays.py        # start, pause, inventory, shop, death, settings, almanac
-  audio.py           # procedural SFX + music loop hooks
-  keybinds.py        # loads keybinds.json, hot-reload
-  sprites.py         # procedural sprite factory + PNG override loader
-  config.py          # all constants (difficulty tables, prices, distances)
-  keybinds.json      # same keys as src/game/keybinds.ts
+```
+python_recreation/pygame_port/
+  main.py                  Entry point: clock, main loop, event polling, state dispatch
+  PleaseBeDaOne.py         Core logic: state machine, physics, collision, wave/spawn loop
+  INTELLIGENCEentities.py  Player, Enemy, Ally, Projectile, Pickup classes
+  SUMassets.py             Sprite/music/SFX loader with procedural fallbacks
+  ui.py                    HUD, shop menus, almanac, inventory, pause, death, start screen
+  data/
+    weapons.py             WEAPONS table (1:1 from src/game/weapons.ts)
+    shops.py               MAIN_SHOP, AUGMENT_SHOP, ALLIES (1:1 from src/game/shops.ts)
+    keybinds.py            Keybind loader (reads ../keybinds.json)
+    constants.py           Physics + difficulty constants from engine.ts
+  save_data.json           Local progression / shop state (replaces any DB)
+  assets/                  Optional drop-in sprites & audio (procedural if missing)
 ```
 
-### Single-file build (`python_recreation/ULTRAMAIN.py`)
-Same code, concatenated in dependency order with section banners (`# === engine.py ===`, etc.). Run with `python ULTRAMAIN.py`. ~4–5k lines.
+No more `ULTRAMAIN.py` shim. Each module owns its code.
 
-## How to run
+## 2. File responsibilities
 
-```bash
-python -m pip install pygame-ce numpy
-cd python_recreation
-python ULTRAMAIN.py            # single-file
-# or
-python -m port.main            # modular
-```
+**main.py**
+- Init pygame-ce, create 1280x720 window, `pygame.time.Clock()`
+- Top-level loop: poll events, delegate to active state, flip display, tick(60)
+- Owns the `Game` instance from `PleaseBeDaOne.py`
+- Handles quit + global hotkeys (pause, fullscreen)
 
-No assets required. Optional: drop PNGs into `port/assets/sprites/...` per `SPRITE_GUIDE.txt`.
+**PleaseBeDaOne.py**
+- `class Game` with state machine: `MenuState`, `PlayingState`, `ShopState`, `AlmanacState`, `PauseState`, `GameOverState`
+- Each state has `handle_event`, `update(dt)`, `draw(surface)`
+- Physics ported exactly from `engine.ts`: gravity 1900, jump 720, base MS 9.2, max MS 26, friction/acceleration curves, dash/roll/parry timers, coyote time, jump buffer
+- Collision: AABB vs platforms, enemy hitboxes, projectile sweeps, landmark 9m safe radius
+- Wave spawner: 5s base, +6 per 666m, caps DUNCE 7 / ALRIGHT 15 / SON 40, SON x2 multiplier, "(THE TIDE RISES)" every 5th
+- Lifesteal counter (every 8th kill +10 HP)
+- Distance-gated unlocks (Necromancer 2000m+ ALRIGHT, Bron/Giant/Apache 1700m+ SON)
+- Save/load via `save_data.json`
 
-## Parity checklist I will tick off
+**INTELLIGENCEentities.py**
+- `Entity` base (pos, vel, hp, draw, update)
+- `Player`: inventory, ammo, dash/roll/parry, overdrive, revives, status effects
+- `Enemy` subclasses: Shooter, Shanker, Brute, Necromancer, Minion, Bron, Giant, Apache (each with HP, dmg, AI)
+- `Ally` subclasses: LilOne (uncapped purchases, paced to player), SheriffSeriff, Eradidog, Stalien, DudePerson
+- `Projectile`, `Pickup` (coin/token/crystal), `Landmark` (MainShop, UpgradeShop, AllyShop)
+- Disco Bomb effect: forces enemies into 5s jump-only, attacks disabled
+- The Button: spawns 900 dmg green sky-bomb, radius 180
 
-- [ ] Player: base 9.2 m/s, cap 26, dash, roll, parry, double-jump-aware, revive count
-- [ ] Lifesteal: every 8th kill = +10 HP
-- [ ] Enemies: shooter/shanker/brute/rider/bomber/sniper + necromancer (≥2000m ALRIGHT+), minions, bron/giant/apache (≥1700m SON only)
-- [ ] Spawn waves: 5/5s, +6 per 666m, "(THE TIDE RISES)" every 5th, caps 7/15/40, SON×2, velocity-scaled timer
-- [ ] Shops: Main 1234m, Upgrade beside it, Ally 1667m, 9m safe radius, Shady removed
-- [ ] Weapons: full price/damage table from `weapons.ts` incl. melee buff, The Button (10000, green sky-bomb AOE), Disco Bomb rework (jump-only 5s)
-- [ ] Allies: unlimited Lil One purchases, full ally roster, balanced stats matching player speed
-- [ ] Difficulty scaling: DUNCE/ALRIGHT/SON applied to spawn caps + enemy gating
-- [ ] Almanac tabs, Inventory, HUD, Pause, Settings, Death, Start
-- [ ] keybinds.json reload after settings change
+**SUMassets.py**
+- `class Assets`: lazy-loads sprites/music/sfx from `assets/`
+- Procedural fallbacks: `make_humanoid`, `make_block`, `make_button_cube` (gray cube + red button), `make_green_bomb`, etc.
+- `class Audio`: numpy-generated SFX (shoot, hit, jump, dash, roll, parry, throw, explode, purchase, coin, heal, shield_on, overdrive, hurt, death, game_over)
+- Music streamer with track rotation (Jetpack, Garfield, Minecraft, Lego)
 
-## After you approve
+**ui.py**
+- `HUD`: health/ammo/coin/crystal/token bars, distance, wave indicator, "(THE TIDE RISES)" toast
+- `ShopMenu`: tabbed Main/Upgrade/Ally, button widgets, purchase confirmation
+- `Almanac`: Weapons/Enemies/Allies/Mechanics tabs reading from `data/`
+- `InventoryOverlay`, `PauseMenu`, `SettingsMenu` (volume sliders, keybind rebinding), `DeathScreen`, `StartScreen` (DUNCE/ALRIGHT/SON select)
 
-I'll generate all files in one drop and confirm with a file list. Expect a large change — review at your pace.
+**data/weapons.py / data/shops.py**
+- Pure data tables, identical IDs/costs/damage to TS source
+- Includes The Button (10000 coins, misc) replacing Portal Gun in MAIN_SHOP
+- Disco Bomb reworked entry
+- Lil One with `purchase_limit=None`
+
+**data/constants.py**
+- All physics/difficulty/spawn/landmark constants pulled from engine.ts in one place
+
+## 3. Technical details
+
+- **Framework**: `pygame-ce` only. `requirements.txt`: `pygame-ce>=2.5`, `numpy`
+- **Resolution**: 1280x720, scalable via fullscreen toggle
+- **State machine**: class-based, single `current_state` reference, push/pop for overlays (pause, shop)
+- **Movement**: ported with same accel curve — `vel.x += accel*dt*input`, `vel.x *= friction**dt`, clamp to `PLAYER_MAX_MS`. Dash = velocity impulse with i-frames, roll = lower hitbox + impulse, parry = 0.18s window
+- **Save data**: `save_data.json` stores unlocked weapons, best distance per difficulty, settings, keybinds. Loaded on boot, written on shop purchase / death
+- **Keybinds**: read existing `python_recreation/keybinds.json` on launch, rebindable in SettingsMenu, written back to disk
+
+## 4. Build order (across turns if needed)
+
+This will exceed one response cleanly. Proposed split:
+
+- **Turn 1 (this approval)**: Scaffold + `main.py`, `PleaseBeDaOne.py` (state machine + physics + spawn loop), `data/constants.py`, `data/keybinds.py`, `save_data.json`
+- **Turn 2**: `INTELLIGENCEentities.py` (all player/enemy/ally/projectile classes with full AI)
+- **Turn 3**: `SUMassets.py` (procedural sprites + numpy SFX + music) and `data/weapons.py`, `data/shops.py`
+- **Turn 4**: `ui.py` (all overlays, shop, almanac, HUD)
+
+Each turn produces complete, runnable files — no stubs, no "simplified" placeholders. After turn 1 the game boots to the menu; after turn 4 it is feature-complete vs the web version.
+
+## 5. Cleanup
+
+- Delete `python_recreation/ULTRAMAIN.py` and the `python_recreation/port/` shim package (they misled you about modularity)
+- Update `python_recreation/PORT_README.md` to point at `pygame_port/main.py` with run instructions: `pip install pygame-ce numpy && python -m pygame_port.main`
+
+Approve and I'll execute Turn 1 immediately.
