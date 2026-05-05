@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "best_distance": {"DUNCE": 0, "ALRIGHT": 0, "SON": 0},
+  "total_coins_earned": 0,
+  "total_kills": 0,
+  "settings": {"music_volume": 0.18, "sfx_volume": 0.55, "fullscreen": false},
+  "shop_purchases": {},
+  "augments_owned": [],
+  "max_hp_bonus": 0,
+  "extra_dashes": 0,
+  "extra_revives": 0
+}
